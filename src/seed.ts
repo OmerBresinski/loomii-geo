@@ -509,13 +509,13 @@ const main = async () => {
 
   console.log('✅ Created competitor history data');
 
-  // Create Sources (reduced Yael Group mentions to 5-15% of total)
+  // Create Sources (only 4 sources mention Yael Group)
   const sources = await Promise.all([
     prisma.source.create({
       data: {
         source: 'Reddit',
         baseUrl: 'https://reddit.com',
-        yaelGroupMentions: Math.floor(Math.random() * 8 + 5), // 5-12 mentions (1-2% of 498)
+        yaelGroupMentions: Math.floor(Math.random() * 6 + 5), // 5-10 mentions
         competitionMentions: 342,
         totalMentions: 498,
       },
@@ -524,7 +524,7 @@ const main = async () => {
       data: {
         source: 'Stack Overflow',
         baseUrl: 'https://stackoverflow.com',
-        yaelGroupMentions: Math.floor(Math.random() * 6 + 3), // 3-8 mentions (1-2% of 356)
+        yaelGroupMentions: Math.floor(Math.random() * 6 + 5), // 5-10 mentions
         competitionMentions: 267,
         totalMentions: 356,
       },
@@ -533,7 +533,7 @@ const main = async () => {
       data: {
         source: 'Hacker News',
         baseUrl: 'https://news.ycombinator.com',
-        yaelGroupMentions: Math.floor(Math.random() * 4 + 2), // 2-5 mentions (1-2% of 271)
+        yaelGroupMentions: 0, // No mentions
         competitionMentions: 198,
         totalMentions: 271,
       },
@@ -542,7 +542,7 @@ const main = async () => {
       data: {
         source: 'TechCrunch',
         baseUrl: 'https://techcrunch.com',
-        yaelGroupMentions: Math.floor(Math.random() * 3 + 1), // 1-3 mentions (0.5-1% of 232)
+        yaelGroupMentions: 0, // No mentions
         competitionMentions: 187,
         totalMentions: 232,
       },
@@ -551,7 +551,7 @@ const main = async () => {
       data: {
         source: 'Product Hunt',
         baseUrl: 'https://producthunt.com',
-        yaelGroupMentions: Math.floor(Math.random() * 4 + 2), // 2-5 mentions (1-2% of 226)
+        yaelGroupMentions: 0, // No mentions
         competitionMentions: 134,
         totalMentions: 226,
       },
@@ -560,7 +560,7 @@ const main = async () => {
       data: {
         source: 'GitHub Issues',
         baseUrl: 'https://github.com',
-        yaelGroupMentions: Math.floor(Math.random() * 3 + 1), // 1-3 mentions (0.5-1% of 212)
+        yaelGroupMentions: Math.floor(Math.random() * 6 + 5), // 5-10 mentions
         competitionMentions: 145,
         totalMentions: 212,
       },
@@ -569,7 +569,7 @@ const main = async () => {
       data: {
         source: 'Medium',
         baseUrl: 'https://medium.com',
-        yaelGroupMentions: Math.floor(Math.random() * 3 + 1), // 1-3 mentions (0.5-1.5% of 194)
+        yaelGroupMentions: 0, // No mentions
         competitionMentions: 156,
         totalMentions: 194,
       },
@@ -578,7 +578,7 @@ const main = async () => {
       data: {
         source: 'Dev.to',
         baseUrl: 'https://dev.to',
-        yaelGroupMentions: Math.floor(Math.random() * 2 + 1), // 1-2 mentions (0.5-1% of 152)
+        yaelGroupMentions: Math.floor(Math.random() * 6 + 5), // 5-10 mentions
         competitionMentions: 98,
         totalMentions: 152,
       },
@@ -587,7 +587,7 @@ const main = async () => {
       data: {
         source: 'Quora',
         baseUrl: 'https://quora.com',
-        yaelGroupMentions: Math.floor(Math.random() * 2 + 0), // 0-1 mentions (0-1% of 116)
+        yaelGroupMentions: 0, // No mentions
         competitionMentions: 87,
         totalMentions: 116,
       },
@@ -596,7 +596,7 @@ const main = async () => {
       data: {
         source: 'Twitter',
         baseUrl: 'https://twitter.com',
-        yaelGroupMentions: Math.floor(Math.random() * 5 + 3), // 3-7 mentions (1-2% of 368)
+        yaelGroupMentions: 0, // No mentions
         competitionMentions: 245,
         totalMentions: 368,
       },
@@ -778,9 +778,42 @@ const main = async () => {
   for (const source of sources) {
     const detailCount = Math.floor(Math.random() * 2) + 4; // 4-5 details per source
 
+    // Calculate how to distribute Yael Group mentions across source details
+    let remainingYaelMentions = source.yaelGroupMentions;
+    const yaelMentionsPerDetail: number[] = [];
+
+    // Only distribute mentions if this source has any
+    if (remainingYaelMentions > 0) {
+      // Distribute mentions across details (some details may have 0, others 1-3)
+      for (let i = 0; i < detailCount; i++) {
+        if (remainingYaelMentions > 0 && Math.random() < 0.6) {
+          // 60% chance a detail gets mentions
+          const mentionsForThisDetail = Math.min(
+            Math.floor(Math.random() * 3) + 1, // 1-3 mentions max per detail
+            remainingYaelMentions
+          );
+          yaelMentionsPerDetail.push(mentionsForThisDetail);
+          remainingYaelMentions -= mentionsForThisDetail;
+        } else {
+          yaelMentionsPerDetail.push(0);
+        }
+      }
+
+      // Distribute any remaining mentions
+      while (remainingYaelMentions > 0) {
+        const randomIndex = Math.floor(Math.random() * detailCount);
+        yaelMentionsPerDetail[randomIndex]++;
+        remainingYaelMentions--;
+      }
+    } else {
+      // No mentions for this source
+      for (let i = 0; i < detailCount; i++) {
+        yaelMentionsPerDetail.push(0);
+      }
+    }
+
     for (let i = 0; i < detailCount; i++) {
-      // Ensure Yael Group mentions stay extremely low (most have 0, rarely 1)
-      const yaelMentions = Math.random() < 0.85 ? 0 : 1; // 85% chance of 0 mentions, 15% chance of 1 mention
+      const yaelMentions = yaelMentionsPerDetail[i];
       const compMentions = Math.floor(
         Math.random() * (source.competitionMentions / 2)
       );
