@@ -1,0 +1,138 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Topic {
+    id                String   @id @default(uuid())
+    name              String   @unique
+    responseCount     Int      @default(0)
+    visibility        Float    @default(0) // 0-100
+    sentimentPositive Float    @default(0) // 0-100
+    sentimentNeutral  Float    @default(0) // 0-100
+    sentimentNegative Float    @default(0) // 0-100
+    status            Boolean  @default(true)
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    prompts Prompt[]
+
+    @@map("topics")
+}
+
+model Prompt {
+    id                String   @id @default(uuid())
+    text              String
+    responses         Int      @default(0)
+    visibility        Float    @default(0) // 0-100
+    sentimentPositive Float    @default(0) // 0-100
+    sentimentNeutral  Float    @default(0) // 0-100
+    sentimentNegative Float    @default(0) // 0-100
+    status            Boolean  @default(true)
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    topicId String
+    topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+    aiProviders AIProviderResponse[]
+
+    @@map("prompts")
+}
+
+enum AIProvider {
+    ChatGPT
+    Gemini
+    Perplexity
+}
+
+enum InsightImpact {
+    Low
+    Medium
+    High
+}
+
+model AIProviderResponse {
+    id                     String        @id @default(uuid())
+    company                String
+    provider               AIProvider
+    homepage               String
+    response               String        @db.Text
+    insightTitle           String
+    insightSummary         String        @db.Text
+    insightProposedActions String[]
+    insightImpact          InsightImpact
+    insightLinks           String[]
+    sources                String[]
+    companyMentions        String[]
+    competitionMentions    String[]
+
+    promptId String
+    prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+    @@map("ai_provider_responses")
+}
+
+model Competitor {
+    id                String   @id @default(uuid())
+    name              String   @unique
+    rank              Int
+    sentimentPositive Float    @default(0) // 0-100
+    sentimentNeutral  Float    @default(0) // 0-100
+    sentimentNegative Float    @default(0) // 0-100
+    visibility        Float    @default(0) // 0-100
+    visibilityChange  Float    @default(0) // -100 to 100
+    favicon           String?
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    historyData CompetitorHistory[]
+
+    @@map("competitors")
+}
+
+model CompetitorHistory {
+    id         String   @id @default(uuid())
+    date       DateTime
+    visibility Float // 0-100
+
+    competitorId String
+    competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+    @@map("competitor_history")
+}
+
+model Source {
+    id                  String   @id @default(uuid())
+    source              String   @unique
+    baseUrl             String
+    yaelGroupMentions   Int      @default(0)
+    competitionMentions Int      @default(0)
+    totalMentions       Int      @default(0)
+    createdAt           DateTime @default(now())
+    updatedAt           DateTime @updatedAt
+
+    details SourceDetail[]
+
+    @@map("sources")
+}
+
+model SourceDetail {
+    id                  String @id @default(uuid())
+    url                 String
+    yaelGroupMentions   Int    @default(0)
+    competitionMentions Int    @default(0)
+    totalMentions       Int    @default(0)
+
+    sourceId String
+    source   Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+    @@map("source_details")
+}
