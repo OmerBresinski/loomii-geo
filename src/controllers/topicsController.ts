@@ -5,7 +5,7 @@ import * as topicsService from '../services/topicsService';
 export const getTopics = async (req: Request, res: Response): Promise<void> => {
   const query: TopicsQuery = {
     page: parseInt(req.query.page as string) || 1,
-    limit: parseInt(req.query.limit as string) || 10,
+    limit: parseInt(req.query.limit as string) || 25,
     status: req.query.status ? req.query.status === 'true' : undefined,
   };
 
