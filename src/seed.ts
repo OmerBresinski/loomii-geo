@@ -292,7 +292,7 @@ const main = async () => {
         sentimentNegative: 5.8,
         visibility: 65.0,
         visibilityChange: 2.1,
-        favicon: 'https://www.asperii.com',
+        favicon: 'https://asperii.com',
       },
     }),
     prisma.competitor.create({
@@ -304,7 +304,7 @@ const main = async () => {
         sentimentNegative: 6.9,
         visibility: 58.0,
         visibilityChange: 1.8,
-        favicon: 'https://www.eladsoftware.com',
+        favicon: 'https://www.eladsoft.com',
       },
     }),
     prisma.competitor.create({
@@ -316,7 +316,7 @@ const main = async () => {
         sentimentNegative: 6.6,
         visibility: 55.0,
         visibilityChange: -0.8,
-        favicon: 'https://www.topvision.co.il',
+        favicon: 'https://top-vision.co.il',
       },
     }),
     prisma.competitor.create({
@@ -328,7 +328,7 @@ const main = async () => {
         sentimentNegative: 6.4,
         visibility: 52.0,
         visibilityChange: 3.2,
-        favicon: 'https://www.icloudius.com',
+        favicon: 'https://icloudius.com',
       },
     }),
     prisma.competitor.create({
@@ -340,7 +340,7 @@ const main = async () => {
         sentimentNegative: 8.0,
         visibility: 48.0,
         visibilityChange: -1.5,
-        favicon: 'https://www.one-tech.co.il',
+        favicon: 'https://one1.co.il',
       },
     }),
     prisma.competitor.create({
