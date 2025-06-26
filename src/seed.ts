@@ -270,7 +270,7 @@ const main = async () => {
 
   console.log('✅ Created prompts and AI provider responses');
 
-  // Create Competitors
+  // Create Competitors (removed Microsoft Dynamics)
   const competitors = await Promise.all([
     prisma.competitor.create({
       data: {
@@ -298,20 +298,8 @@ const main = async () => {
     }),
     prisma.competitor.create({
       data: {
-        name: 'Microsoft Dynamics',
-        rank: 3,
-        sentimentPositive: 65.3,
-        sentimentNeutral: 28.1,
-        sentimentNegative: 6.6,
-        visibility: 82.4,
-        visibilityChange: -1.2,
-        favicon: 'https://dynamics.microsoft.com/favicon.ico',
-      },
-    }),
-    prisma.competitor.create({
-      data: {
         name: 'Oracle CX',
-        rank: 4,
+        rank: 3,
         sentimentPositive: 58.7,
         sentimentNeutral: 32.4,
         sentimentNegative: 8.9,
@@ -323,7 +311,7 @@ const main = async () => {
     prisma.competitor.create({
       data: {
         name: 'Pipedrive',
-        rank: 5,
+        rank: 4,
         sentimentPositive: 81.2,
         sentimentNeutral: 16.8,
         sentimentNegative: 2.0,
@@ -335,7 +323,7 @@ const main = async () => {
     prisma.competitor.create({
       data: {
         name: 'Zoho CRM',
-        rank: 6,
+        rank: 5,
         sentimentPositive: 74.6,
         sentimentNeutral: 22.1,
         sentimentNegative: 3.3,
@@ -347,7 +335,7 @@ const main = async () => {
     prisma.competitor.create({
       data: {
         name: 'SAP CRM',
-        rank: 7,
+        rank: 6,
         sentimentPositive: 52.8,
         sentimentNeutral: 38.7,
         sentimentNegative: 8.5,
@@ -359,7 +347,7 @@ const main = async () => {
     prisma.competitor.create({
       data: {
         name: 'Freshsales',
-        rank: 8,
+        rank: 7,
         sentimentPositive: 79.3,
         sentimentNeutral: 18.4,
         sentimentNegative: 2.3,
@@ -371,7 +359,7 @@ const main = async () => {
     prisma.competitor.create({
       data: {
         name: 'SugarCRM',
-        rank: 9,
+        rank: 8,
         sentimentPositive: 68.1,
         sentimentNeutral: 26.7,
         sentimentNegative: 5.2,
@@ -383,13 +371,25 @@ const main = async () => {
     prisma.competitor.create({
       data: {
         name: 'Insightly',
-        rank: 10,
+        rank: 9,
         sentimentPositive: 72.5,
         sentimentNeutral: 24.8,
         sentimentNegative: 2.7,
         visibility: 55.2,
         visibilityChange: 4.3,
         favicon: 'https://www.insightly.com/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'Yael Group',
+        rank: 10,
+        sentimentPositive: 65.8,
+        sentimentNeutral: 28.2,
+        sentimentNegative: 6.0,
+        visibility: Math.random() * 10 + 5, // 5-15% visibility range
+        visibilityChange: (Math.random() - 0.5) * 4, // ±2% change
+        favicon: 'https://www.yaelgroup.com/favicon.ico',
       },
     }),
   ]);
@@ -403,8 +403,15 @@ const main = async () => {
   for (const competitor of competitors) {
     for (let i = months; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const baseVisibility = competitor.visibility;
-      const variation = (Math.random() - 0.5) * 10; // ±5% variation
+      let baseVisibility = competitor.visibility;
+      let variation = (Math.random() - 0.5) * 10; // ±5% variation
+
+      // Special handling for Yael Group to keep visibility in 5-15% range
+      if (competitor.name === 'Yael Group') {
+        baseVisibility = Math.random() * 10 + 5; // 5-15% range
+        variation = (Math.random() - 0.5) * 4; // Smaller variation for Yael Group
+      }
+
       const visibility = Math.max(0, Math.min(100, baseVisibility + variation));
 
       await prisma.competitorHistory.create({
@@ -419,13 +426,13 @@ const main = async () => {
 
   console.log('✅ Created competitor history data');
 
-  // Create Sources
+  // Create Sources (reduced Yael Group mentions to 5-15% of total)
   const sources = await Promise.all([
     prisma.source.create({
       data: {
         source: 'Reddit',
         baseUrl: 'https://reddit.com',
-        yaelGroupMentions: 156,
+        yaelGroupMentions: Math.floor(Math.random() * 25 + 25), // 25-49 mentions (5-10% of 498)
         competitionMentions: 342,
         totalMentions: 498,
       },
@@ -434,7 +441,7 @@ const main = async () => {
       data: {
         source: 'Stack Overflow',
         baseUrl: 'https://stackoverflow.com',
-        yaelGroupMentions: 89,
+        yaelGroupMentions: Math.floor(Math.random() * 20 + 18), // 18-37 mentions (5-10% of 356)
         competitionMentions: 267,
         totalMentions: 356,
       },
@@ -443,7 +450,7 @@ const main = async () => {
       data: {
         source: 'Hacker News',
         baseUrl: 'https://news.ycombinator.com',
-        yaelGroupMentions: 73,
+        yaelGroupMentions: Math.floor(Math.random() * 15 + 14), // 14-28 mentions (5-10% of 271)
         competitionMentions: 198,
         totalMentions: 271,
       },
@@ -452,7 +459,7 @@ const main = async () => {
       data: {
         source: 'TechCrunch',
         baseUrl: 'https://techcrunch.com',
-        yaelGroupMentions: 45,
+        yaelGroupMentions: Math.floor(Math.random() * 12 + 12), // 12-23 mentions (5-10% of 232)
         competitionMentions: 187,
         totalMentions: 232,
       },
@@ -461,7 +468,7 @@ const main = async () => {
       data: {
         source: 'Product Hunt',
         baseUrl: 'https://producthunt.com',
-        yaelGroupMentions: 92,
+        yaelGroupMentions: Math.floor(Math.random() * 11 + 11), // 11-22 mentions (5-10% of 226)
         competitionMentions: 134,
         totalMentions: 226,
       },
@@ -470,7 +477,7 @@ const main = async () => {
       data: {
         source: 'GitHub Issues',
         baseUrl: 'https://github.com',
-        yaelGroupMentions: 67,
+        yaelGroupMentions: Math.floor(Math.random() * 11 + 11), // 11-21 mentions (5-10% of 212)
         competitionMentions: 145,
         totalMentions: 212,
       },
@@ -479,7 +486,7 @@ const main = async () => {
       data: {
         source: 'Medium',
         baseUrl: 'https://medium.com',
-        yaelGroupMentions: 38,
+        yaelGroupMentions: Math.floor(Math.random() * 10 + 10), // 10-19 mentions (5-10% of 194)
         competitionMentions: 156,
         totalMentions: 194,
       },
@@ -488,7 +495,7 @@ const main = async () => {
       data: {
         source: 'Dev.to',
         baseUrl: 'https://dev.to',
-        yaelGroupMentions: 54,
+        yaelGroupMentions: Math.floor(Math.random() * 8 + 8), // 8-15 mentions (5-10% of 152)
         competitionMentions: 98,
         totalMentions: 152,
       },
@@ -497,7 +504,7 @@ const main = async () => {
       data: {
         source: 'Quora',
         baseUrl: 'https://quora.com',
-        yaelGroupMentions: 29,
+        yaelGroupMentions: Math.floor(Math.random() * 6 + 6), // 6-11 mentions (5-10% of 116)
         competitionMentions: 87,
         totalMentions: 116,
       },
@@ -506,7 +513,7 @@ const main = async () => {
       data: {
         source: 'Twitter',
         baseUrl: 'https://twitter.com',
-        yaelGroupMentions: 123,
+        yaelGroupMentions: Math.floor(Math.random() * 18 + 18), // 18-36 mentions (5-10% of 368)
         competitionMentions: 245,
         totalMentions: 368,
       },
@@ -520,9 +527,9 @@ const main = async () => {
     const detailCount = Math.floor(Math.random() * 5) + 3; // 3-7 details per source
 
     for (let i = 0; i < detailCount; i++) {
-      const yaelMentions = Math.floor(
-        Math.random() * (source.yaelGroupMentions / 2)
-      );
+      // Ensure Yael Group mentions stay low (0-3 per detail, with most having 0-1)
+      const yaelMentions =
+        Math.random() < 0.7 ? 0 : Math.floor(Math.random() * 3);
       const compMentions = Math.floor(
         Math.random() * (source.competitionMentions / 2)
       );
