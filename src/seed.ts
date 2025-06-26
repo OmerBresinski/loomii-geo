@@ -292,7 +292,7 @@ const main = async () => {
         sentimentNegative: 5.8,
         visibility: 65.0,
         visibilityChange: 2.1,
-        favicon: 'https://www.asperii.com/favicon.ico',
+        favicon: 'https://www.asperii.com',
       },
     }),
     prisma.competitor.create({
@@ -304,7 +304,7 @@ const main = async () => {
         sentimentNegative: 6.9,
         visibility: 58.0,
         visibilityChange: 1.8,
-        favicon: 'https://www.eladsoftware.com/favicon.ico',
+        favicon: 'https://www.eladsoftware.com',
       },
     }),
     prisma.competitor.create({
@@ -316,7 +316,7 @@ const main = async () => {
         sentimentNegative: 6.6,
         visibility: 55.0,
         visibilityChange: -0.8,
-        favicon: 'https://www.topvision.co.il/favicon.ico',
+        favicon: 'https://www.topvision.co.il',
       },
     }),
     prisma.competitor.create({
@@ -328,7 +328,7 @@ const main = async () => {
         sentimentNegative: 6.4,
         visibility: 52.0,
         visibilityChange: 3.2,
-        favicon: 'https://www.icloudius.com/favicon.ico',
+        favicon: 'https://www.icloudius.com',
       },
     }),
     prisma.competitor.create({
@@ -340,7 +340,7 @@ const main = async () => {
         sentimentNegative: 8.0,
         visibility: 48.0,
         visibilityChange: -1.5,
-        favicon: 'https://www.one-tech.co.il/favicon.ico',
+        favicon: 'https://www.one-tech.co.il',
       },
     }),
     prisma.competitor.create({
@@ -352,7 +352,7 @@ const main = async () => {
         sentimentNegative: 8.9,
         visibility: 45.0,
         visibilityChange: 0.9,
-        favicon: 'https://www.matrix.co.il/favicon.ico',
+        favicon: 'https://www.matrix.co.il',
       },
     }),
     prisma.competitor.create({
@@ -364,7 +364,7 @@ const main = async () => {
         sentimentNegative: 7.0,
         visibility: 42.0,
         visibilityChange: 2.4,
-        favicon: 'https://www.ness.com/favicon.ico',
+        favicon: 'https://www.ness.com',
       },
     }),
     prisma.competitor.create({
@@ -376,7 +376,7 @@ const main = async () => {
         sentimentNegative: 8.7,
         visibility: 40.0,
         visibilityChange: -0.6,
-        favicon: 'https://www.amdocs.com/favicon.ico',
+        favicon: 'https://www.amdocs.com',
       },
     }),
     prisma.competitor.create({
@@ -388,7 +388,7 @@ const main = async () => {
         sentimentNegative: 7.8,
         visibility: 38.0,
         visibilityChange: 1.3,
-        favicon: 'https://www.nice.com/favicon.ico',
+        favicon: 'https://www.nice.com',
       },
     }),
     prisma.competitor.create({
@@ -400,7 +400,7 @@ const main = async () => {
         sentimentNegative: 9.2,
         visibility: 35.0,
         visibilityChange: -1.8,
-        favicon: 'https://www.sapiens.com/favicon.ico',
+        favicon: 'https://www.sapiens.com',
       },
     }),
     prisma.competitor.create({
@@ -412,7 +412,7 @@ const main = async () => {
         sentimentNegative: 9.8,
         visibility: 32.0,
         visibilityChange: 0.7,
-        favicon: 'https://www.magicsoftware.com/favicon.ico',
+        favicon: 'https://www.magicsoftware.com',
       },
     }),
     prisma.competitor.create({
@@ -424,7 +424,7 @@ const main = async () => {
         sentimentNegative: 10.7,
         visibility: 30.0,
         visibilityChange: -2.1,
-        favicon: 'https://www.verint.com/favicon.ico',
+        favicon: 'https://www.verint.com',
       },
     }),
     prisma.competitor.create({
@@ -436,7 +436,7 @@ const main = async () => {
         sentimentNegative: 9.5,
         visibility: 28.0,
         visibilityChange: 1.9,
-        favicon: 'https://www.epam.com/favicon.ico',
+        favicon: 'https://www.epam.com',
       },
     }),
     prisma.competitor.create({
@@ -448,7 +448,7 @@ const main = async () => {
         sentimentNegative: 11.5,
         visibility: 25.0,
         visibilityChange: -0.4,
-        favicon: 'https://www.comm-it.co.il/favicon.ico',
+        favicon: 'https://www.comm-it.co.il',
       },
     }),
     prisma.competitor.create({
@@ -460,7 +460,7 @@ const main = async () => {
         sentimentNegative: 12.1,
         visibility: 22.0,
         visibilityChange: -1.2,
-        favicon: 'https://www.selagroup.com/favicon.ico',
+        favicon: 'https://www.selagroup.com',
       },
     }),
     prisma.competitor.create({
@@ -472,7 +472,7 @@ const main = async () => {
         sentimentNegative: 13.0,
         visibility: 12.0,
         visibilityChange: -0.8,
-        favicon: 'https://www.yaelgroup.com/favicon.ico',
+        favicon: 'https://www.yaelgroup.com',
       },
     }),
   ]);
