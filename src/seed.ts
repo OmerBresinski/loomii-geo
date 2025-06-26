@@ -22,10 +22,10 @@ const main = async () => {
       data: {
         name: 'Salesforce',
         responseCount: 142,
-        visibility: 87.5,
-        sentimentPositive: 68.2,
-        sentimentNeutral: 24.8,
-        sentimentNegative: 7.0,
+        visibility: Math.random() * 10 + 5, // 5-15% visibility for Yael Group
+        sentimentPositive: Math.random() * 20 + 45, // 45-65% positive sentiment (lower than competitors)
+        sentimentNeutral: Math.random() * 15 + 30, // 30-45% neutral sentiment
+        sentimentNegative: Math.random() * 10 + 5, // 5-15% negative sentiment
         status: true,
       },
     }),
@@ -33,10 +33,10 @@ const main = async () => {
       data: {
         name: 'ERP',
         responseCount: 89,
-        visibility: 72.3,
-        sentimentPositive: 55.6,
-        sentimentNeutral: 32.1,
-        sentimentNegative: 12.3,
+        visibility: Math.random() * 10 + 5, // 5-15% visibility for Yael Group
+        sentimentPositive: Math.random() * 20 + 40, // 40-60% positive sentiment
+        sentimentNeutral: Math.random() * 20 + 30, // 30-50% neutral sentiment
+        sentimentNegative: Math.random() * 15 + 5, // 5-20% negative sentiment
         status: true,
       },
     }),
@@ -44,10 +44,10 @@ const main = async () => {
       data: {
         name: 'Cloud Cost Management & FinOps',
         responseCount: 156,
-        visibility: 91.2,
-        sentimentPositive: 78.4,
-        sentimentNeutral: 18.9,
-        sentimentNegative: 2.7,
+        visibility: Math.random() * 10 + 8, // 8-18% visibility (slightly higher as this might be Yael Group's stronger area)
+        sentimentPositive: Math.random() * 25 + 50, // 50-75% positive sentiment (better performance in this area)
+        sentimentNeutral: Math.random() * 15 + 20, // 20-35% neutral sentiment
+        sentimentNegative: Math.random() * 8 + 2, // 2-10% negative sentiment
         status: true,
       },
     }),
