@@ -16,46 +16,7 @@ const main = async () => {
 
   console.log('🗑️  Cleared existing data');
 
-  // Create Topics
-  const topics = await Promise.all([
-    prisma.topic.create({
-      data: {
-        name: 'Salesforce',
-        responseCount: 142,
-        visibility: Math.random() * 10 + 5, // 5-15% visibility for Yael Group
-        sentimentPositive: Math.random() * 20 + 45, // 45-65% positive sentiment (lower than competitors)
-        sentimentNeutral: Math.random() * 15 + 30, // 30-45% neutral sentiment
-        sentimentNegative: Math.random() * 10 + 5, // 5-15% negative sentiment
-        status: true,
-      },
-    }),
-    prisma.topic.create({
-      data: {
-        name: 'ERP',
-        responseCount: 89,
-        visibility: Math.random() * 10 + 5, // 5-15% visibility for Yael Group
-        sentimentPositive: Math.random() * 20 + 40, // 40-60% positive sentiment
-        sentimentNeutral: Math.random() * 20 + 30, // 30-50% neutral sentiment
-        sentimentNegative: Math.random() * 15 + 5, // 5-20% negative sentiment
-        status: true,
-      },
-    }),
-    prisma.topic.create({
-      data: {
-        name: 'Cloud Cost Management & FinOps',
-        responseCount: 156,
-        visibility: Math.random() * 10 + 8, // 8-18% visibility (slightly higher as this might be Yael Group's stronger area)
-        sentimentPositive: Math.random() * 25 + 50, // 50-75% positive sentiment (better performance in this area)
-        sentimentNeutral: Math.random() * 15 + 20, // 20-35% neutral sentiment
-        sentimentNegative: Math.random() * 8 + 2, // 2-10% negative sentiment
-        status: true,
-      },
-    }),
-  ]);
-
-  console.log('✅ Created topics');
-
-  // Create Prompts and AI Provider Responses
+  // Create Prompts and AI Provider Responses data first to calculate topic averages
   const promptsData = [
     {
       topicName: 'Salesforce',
@@ -63,42 +24,42 @@ const main = async () => {
         {
           text: 'What are the best alternatives to Salesforce for small businesses?',
           responses: 8,
-          visibility: Math.random() * 8 + 4,
-          sentimentPositive: Math.random() * 20 + 45,
-          sentimentNeutral: Math.random() * 15 + 30,
-          sentimentNegative: Math.random() * 15 + 5,
+          visibility: 6.2, // Fixed visibility percentage
+          sentimentPositive: 52.3,
+          sentimentNeutral: 35.1,
+          sentimentNegative: 12.6,
         },
         {
           text: 'How does Salesforce pricing compare to competitors?',
           responses: 12,
-          visibility: Math.random() * 10 + 5,
-          sentimentPositive: Math.random() * 20 + 40,
-          sentimentNeutral: Math.random() * 20 + 30,
-          sentimentNegative: Math.random() * 12 + 8,
+          visibility: 9.8, // Fixed visibility percentage
+          sentimentPositive: 48.7,
+          sentimentNeutral: 38.4,
+          sentimentNegative: 12.9,
         },
         {
           text: 'Salesforce implementation best practices',
           responses: 6,
-          visibility: Math.random() * 8 + 3,
-          sentimentPositive: Math.random() * 25 + 50,
-          sentimentNeutral: Math.random() * 15 + 20,
-          sentimentNegative: Math.random() * 8 + 2,
+          visibility: 4.5, // Fixed visibility percentage
+          sentimentPositive: 62.1,
+          sentimentNeutral: 28.3,
+          sentimentNegative: 9.6,
         },
         {
           text: 'Salesforce vs HubSpot comparison',
           responses: 14,
-          visibility: Math.random() * 12 + 6,
-          sentimentPositive: Math.random() * 20 + 45,
-          sentimentNeutral: Math.random() * 15 + 25,
-          sentimentNegative: Math.random() * 12 + 5,
+          visibility: 11.3, // Fixed visibility percentage
+          sentimentPositive: 51.8,
+          sentimentNeutral: 32.4,
+          sentimentNegative: 15.8,
         },
         {
           text: 'Salesforce integration challenges',
           responses: 11,
-          visibility: Math.random() * 10 + 4,
-          sentimentPositive: Math.random() * 15 + 30,
-          sentimentNeutral: Math.random() * 20 + 35,
-          sentimentNegative: Math.random() * 15 + 10,
+          visibility: 7.9, // Fixed visibility percentage
+          sentimentPositive: 38.2,
+          sentimentNeutral: 42.1,
+          sentimentNegative: 19.7,
         },
       ],
     },
@@ -108,42 +69,42 @@ const main = async () => {
         {
           text: 'Best ERP systems for manufacturing companies',
           responses: 9,
-          visibility: Math.random() * 8 + 5,
-          sentimentPositive: Math.random() * 20 + 40,
-          sentimentNeutral: Math.random() * 20 + 30,
-          sentimentNegative: Math.random() * 12 + 5,
+          visibility: 8.4, // Fixed visibility percentage
+          sentimentPositive: 55.2,
+          sentimentNeutral: 34.8,
+          sentimentNegative: 10.0,
         },
         {
           text: 'SAP vs Oracle ERP comparison',
           responses: 6,
-          visibility: Math.random() * 10 + 3,
-          sentimentPositive: Math.random() * 18 + 35,
-          sentimentNeutral: Math.random() * 20 + 35,
-          sentimentNegative: Math.random() * 15 + 8,
+          visibility: 5.1, // Fixed visibility percentage
+          sentimentPositive: 42.3,
+          sentimentNeutral: 43.2,
+          sentimentNegative: 14.5,
         },
         {
           text: 'Cloud ERP vs on-premise ERP',
           responses: 7,
-          visibility: Math.random() * 9 + 4,
-          sentimentPositive: Math.random() * 20 + 45,
-          sentimentNeutral: Math.random() * 15 + 25,
-          sentimentNegative: Math.random() * 10 + 5,
+          visibility: 6.8, // Fixed visibility percentage
+          sentimentPositive: 58.9,
+          sentimentNeutral: 31.4,
+          sentimentNegative: 9.7,
         },
         {
           text: 'ERP implementation timeline and costs',
           responses: 5,
-          visibility: Math.random() * 8 + 2,
-          sentimentPositive: Math.random() * 15 + 30,
-          sentimentNeutral: Math.random() * 20 + 35,
-          sentimentNegative: Math.random() * 18 + 10,
+          visibility: 3.2, // Fixed visibility percentage
+          sentimentPositive: 35.6,
+          sentimentNeutral: 46.8,
+          sentimentNegative: 17.6,
         },
         {
           text: 'Small business ERP solutions',
           responses: 8,
-          visibility: Math.random() * 10 + 6,
-          sentimentPositive: Math.random() * 22 + 48,
-          sentimentNeutral: Math.random() * 15 + 20,
-          sentimentNegative: Math.random() * 8 + 3,
+          visibility: 9.7, // Fixed visibility percentage
+          sentimentPositive: 63.4,
+          sentimentNeutral: 28.1,
+          sentimentNegative: 8.5,
         },
       ],
     },
@@ -153,47 +114,97 @@ const main = async () => {
         {
           text: 'AWS cost optimization strategies',
           responses: 16,
-          visibility: Math.random() * 12 + 8,
-          sentimentPositive: Math.random() * 25 + 55,
-          sentimentNeutral: Math.random() * 12 + 15,
-          sentimentNegative: Math.random() * 6 + 2,
+          visibility: 14.2, // Fixed visibility percentage (higher for specialty area)
+          sentimentPositive: 68.5,
+          sentimentNeutral: 24.8,
+          sentimentNegative: 6.7,
         },
         {
           text: 'FinOps best practices for cloud cost management',
           responses: 14,
-          visibility: Math.random() * 10 + 9,
-          sentimentPositive: Math.random() * 22 + 53,
-          sentimentNeutral: Math.random() * 15 + 18,
-          sentimentNegative: Math.random() * 6 + 2,
+          visibility: 12.8, // Fixed visibility percentage
+          sentimentPositive: 65.3,
+          sentimentNeutral: 28.1,
+          sentimentNegative: 6.6,
         },
         {
           text: 'Multi-cloud cost management tools',
           responses: 11,
-          visibility: Math.random() * 10 + 7,
-          sentimentPositive: Math.random() * 20 + 50,
-          sentimentNeutral: Math.random() * 15 + 20,
-          sentimentNegative: Math.random() * 8 + 3,
+          visibility: 10.5, // Fixed visibility percentage
+          sentimentPositive: 61.2,
+          sentimentNeutral: 32.4,
+          sentimentNegative: 6.4,
         },
         {
           text: 'Azure cost management vs AWS cost explorer',
           responses: 12,
-          visibility: Math.random() * 11 + 8,
-          sentimentPositive: Math.random() * 20 + 48,
-          sentimentNeutral: Math.random() * 18 + 22,
-          sentimentNegative: Math.random() * 8 + 4,
+          visibility: 13.6, // Fixed visibility percentage
+          sentimentPositive: 58.7,
+          sentimentNeutral: 35.2,
+          sentimentNegative: 6.1,
         },
         {
           text: 'Cloud cost allocation and chargeback models',
           responses: 9,
-          visibility: Math.random() * 9 + 6,
-          sentimentPositive: Math.random() * 23 + 52,
-          sentimentNeutral: Math.random() * 12 + 18,
-          sentimentNegative: Math.random() * 8 + 2,
+          visibility: 8.9, // Fixed visibility percentage
+          sentimentPositive: 64.8,
+          sentimentNeutral: 29.6,
+          sentimentNegative: 5.6,
         },
       ],
     },
   ];
 
+  // Calculate topic averages from prompt data
+  const calculateTopicAverages = (prompts: any[]) => {
+    const totalPrompts = prompts.length;
+    const totalResponses = prompts.reduce((sum, p) => sum + p.responses, 0);
+    const avgVisibility =
+      prompts.reduce((sum, p) => sum + p.visibility, 0) / totalPrompts;
+    const avgSentimentPositive =
+      prompts.reduce((sum, p) => sum + p.sentimentPositive, 0) / totalPrompts;
+    const avgSentimentNeutral =
+      prompts.reduce((sum, p) => sum + p.sentimentNeutral, 0) / totalPrompts;
+    const avgSentimentNegative =
+      prompts.reduce((sum, p) => sum + p.sentimentNegative, 0) / totalPrompts;
+
+    return {
+      responseCount: totalResponses,
+      visibility: Math.round(avgVisibility * 10) / 10, // Round to 1 decimal
+      sentimentPositive: Math.round(avgSentimentPositive * 10) / 10,
+      sentimentNeutral: Math.round(avgSentimentNeutral * 10) / 10,
+      sentimentNegative: Math.round(avgSentimentNegative * 10) / 10,
+    };
+  };
+
+  // Create Topics with calculated averages
+  const topics = await Promise.all([
+    prisma.topic.create({
+      data: {
+        name: 'Salesforce',
+        ...calculateTopicAverages(promptsData[0].prompts),
+        status: true,
+      },
+    }),
+    prisma.topic.create({
+      data: {
+        name: 'ERP',
+        ...calculateTopicAverages(promptsData[1].prompts),
+        status: true,
+      },
+    }),
+    prisma.topic.create({
+      data: {
+        name: 'Cloud Cost Management & FinOps',
+        ...calculateTopicAverages(promptsData[2].prompts),
+        status: true,
+      },
+    }),
+  ]);
+
+  console.log('✅ Created topics');
+
+  // Create Prompts and AI Provider Responses
   for (const topicData of promptsData) {
     const topic = topics.find(t => t.name === topicData.topicName);
     if (!topic) continue;
@@ -274,121 +285,193 @@ const main = async () => {
   const competitors = await Promise.all([
     prisma.competitor.create({
       data: {
-        name: 'Salesforce',
+        name: 'Asperii',
         rank: 1,
         sentimentPositive: 72.4,
         sentimentNeutral: 21.8,
         sentimentNegative: 5.8,
-        visibility: 94.2,
+        visibility: 65.0,
         visibilityChange: 2.1,
-        favicon: 'https://www.salesforce.com/favicon.ico',
+        favicon: 'https://www.asperii.com/favicon.ico',
       },
     }),
     prisma.competitor.create({
       data: {
-        name: 'HubSpot',
+        name: 'Elad Software Systems',
         rank: 2,
-        sentimentPositive: 78.9,
-        sentimentNeutral: 18.2,
-        sentimentNegative: 2.9,
-        visibility: 87.6,
-        visibilityChange: 5.3,
-        favicon: 'https://www.hubspot.com/favicon.ico',
+        sentimentPositive: 68.9,
+        sentimentNeutral: 24.2,
+        sentimentNegative: 6.9,
+        visibility: 58.0,
+        visibilityChange: 1.8,
+        favicon: 'https://www.eladsoftware.com/favicon.ico',
       },
     }),
     prisma.competitor.create({
       data: {
-        name: 'Oracle CX',
+        name: 'Top Vision',
         rank: 3,
+        sentimentPositive: 65.3,
+        sentimentNeutral: 28.1,
+        sentimentNegative: 6.6,
+        visibility: 55.0,
+        visibilityChange: -0.8,
+        favicon: 'https://www.topvision.co.il/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'iCloudius - Cloud IT Solutions',
+        rank: 4,
+        sentimentPositive: 70.2,
+        sentimentNeutral: 23.4,
+        sentimentNegative: 6.4,
+        visibility: 52.0,
+        visibilityChange: 3.2,
+        favicon: 'https://www.icloudius.com/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'ONE Technologies',
+        rank: 5,
+        sentimentPositive: 61.8,
+        sentimentNeutral: 30.2,
+        sentimentNegative: 8.0,
+        visibility: 48.0,
+        visibilityChange: -1.5,
+        favicon: 'https://www.one-tech.co.il/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'Matrix Global',
+        rank: 6,
         sentimentPositive: 58.7,
         sentimentNeutral: 32.4,
         sentimentNegative: 8.9,
-        visibility: 76.8,
-        visibilityChange: -3.4,
-        favicon: 'https://www.oracle.com/favicon.ico',
+        visibility: 45.0,
+        visibilityChange: 0.9,
+        favicon: 'https://www.matrix.co.il/favicon.ico',
       },
     }),
     prisma.competitor.create({
       data: {
-        name: 'Pipedrive',
-        rank: 4,
-        sentimentPositive: 81.2,
-        sentimentNeutral: 16.8,
-        sentimentNegative: 2.0,
-        visibility: 71.3,
-        visibilityChange: 8.7,
-        favicon: 'https://www.pipedrive.com/favicon.ico',
-      },
-    }),
-    prisma.competitor.create({
-      data: {
-        name: 'Zoho CRM',
-        rank: 5,
-        sentimentPositive: 74.6,
-        sentimentNeutral: 22.1,
-        sentimentNegative: 3.3,
-        visibility: 68.9,
-        visibilityChange: 3.2,
-        favicon: 'https://www.zoho.com/favicon.ico',
-      },
-    }),
-    prisma.competitor.create({
-      data: {
-        name: 'SAP CRM',
-        rank: 6,
-        sentimentPositive: 52.8,
-        sentimentNeutral: 38.7,
-        sentimentNegative: 8.5,
-        visibility: 65.4,
-        visibilityChange: -2.1,
-        favicon: 'https://www.sap.com/favicon.ico',
-      },
-    }),
-    prisma.competitor.create({
-      data: {
-        name: 'Freshsales',
+        name: 'Ness Digital Engineering',
         rank: 7,
-        sentimentPositive: 79.3,
-        sentimentNeutral: 18.4,
-        sentimentNegative: 2.3,
-        visibility: 62.7,
-        visibilityChange: 6.8,
-        favicon: 'https://www.freshworks.com/favicon.ico',
+        sentimentPositive: 64.3,
+        sentimentNeutral: 28.7,
+        sentimentNegative: 7.0,
+        visibility: 42.0,
+        visibilityChange: 2.4,
+        favicon: 'https://www.ness.com/favicon.ico',
       },
     }),
     prisma.competitor.create({
       data: {
-        name: 'SugarCRM',
+        name: 'Amdocs',
         rank: 8,
-        sentimentPositive: 68.1,
-        sentimentNeutral: 26.7,
-        sentimentNegative: 5.2,
-        visibility: 58.9,
-        visibilityChange: 1.4,
-        favicon: 'https://www.sugarcrm.com/favicon.ico',
+        sentimentPositive: 56.2,
+        sentimentNeutral: 35.1,
+        sentimentNegative: 8.7,
+        visibility: 40.0,
+        visibilityChange: -0.6,
+        favicon: 'https://www.amdocs.com/favicon.ico',
       },
     }),
     prisma.competitor.create({
       data: {
-        name: 'Insightly',
+        name: 'NICE',
         rank: 9,
-        sentimentPositive: 72.5,
-        sentimentNeutral: 24.8,
-        sentimentNegative: 2.7,
-        visibility: 55.2,
-        visibilityChange: 4.3,
-        favicon: 'https://www.insightly.com/favicon.ico',
+        sentimentPositive: 59.4,
+        sentimentNeutral: 32.8,
+        sentimentNegative: 7.8,
+        visibility: 38.0,
+        visibilityChange: 1.3,
+        favicon: 'https://www.nice.com/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'Sapiens',
+        rank: 10,
+        sentimentPositive: 53.6,
+        sentimentNeutral: 37.2,
+        sentimentNegative: 9.2,
+        visibility: 35.0,
+        visibilityChange: -1.8,
+        favicon: 'https://www.sapiens.com/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'Magic Software',
+        rank: 11,
+        sentimentPositive: 51.8,
+        sentimentNeutral: 38.4,
+        sentimentNegative: 9.8,
+        visibility: 32.0,
+        visibilityChange: 0.7,
+        favicon: 'https://www.magicsoftware.com/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'Verint',
+        rank: 12,
+        sentimentPositive: 49.2,
+        sentimentNeutral: 40.1,
+        sentimentNegative: 10.7,
+        visibility: 30.0,
+        visibilityChange: -2.1,
+        favicon: 'https://www.verint.com/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'EPAM Israel',
+        rank: 13,
+        sentimentPositive: 55.7,
+        sentimentNeutral: 34.8,
+        sentimentNegative: 9.5,
+        visibility: 28.0,
+        visibilityChange: 1.9,
+        favicon: 'https://www.epam.com/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'Comm-IT',
+        rank: 14,
+        sentimentPositive: 47.3,
+        sentimentNeutral: 41.2,
+        sentimentNegative: 11.5,
+        visibility: 25.0,
+        visibilityChange: -0.4,
+        favicon: 'https://www.comm-it.co.il/favicon.ico',
+      },
+    }),
+    prisma.competitor.create({
+      data: {
+        name: 'Sela Group',
+        rank: 15,
+        sentimentPositive: 44.8,
+        sentimentNeutral: 43.1,
+        sentimentNegative: 12.1,
+        visibility: 22.0,
+        visibilityChange: -1.2,
+        favicon: 'https://www.selagroup.com/favicon.ico',
       },
     }),
     prisma.competitor.create({
       data: {
         name: 'Yael Group',
-        rank: 10,
-        sentimentPositive: 65.8,
-        sentimentNeutral: 28.2,
-        sentimentNegative: 6.0,
-        visibility: Math.random() * 10 + 5, // 5-15% visibility range
-        visibilityChange: (Math.random() - 0.5) * 4, // ±2% change
+        rank: 16,
+        sentimentPositive: 41.2,
+        sentimentNeutral: 45.8,
+        sentimentNegative: 13.0,
+        visibility: 12.0,
+        visibilityChange: -0.8,
         favicon: 'https://www.yaelgroup.com/favicon.ico',
       },
     }),
@@ -522,9 +605,178 @@ const main = async () => {
 
   console.log('✅ Created sources');
 
+  // Realistic URL generators for each source type
+  const urlGenerators: { [key: string]: () => string } = {
+    Reddit: () => {
+      const subreddits = [
+        'r/salesforce',
+        'r/sysadmin',
+        'r/devops',
+        'r/entrepreneur',
+        'r/smallbusiness',
+        'r/aws',
+        'r/AZURE',
+        'r/CloudComputing',
+      ];
+      const postTypes = ['comments', 'posts'];
+      const postIds = [
+        'abc123def',
+        'xyz789ghi',
+        'qwe456rty',
+        'asd789fgh',
+        'zxc321vbn',
+      ];
+      const subreddit =
+        subreddits[Math.floor(Math.random() * subreddits.length)];
+      const postType = postTypes[Math.floor(Math.random() * postTypes.length)];
+      const postId = postIds[Math.floor(Math.random() * postIds.length)];
+      return `https://reddit.com/${subreddit}/${postType}/${postId}`;
+    },
+    'Stack Overflow': () => {
+      const questionIds = [
+        '45678901',
+        '23456789',
+        '67890123',
+        '34567890',
+        '78901234',
+      ];
+      const tags = [
+        'salesforce',
+        'erp',
+        'aws-cost',
+        'cloud-management',
+        'finops',
+        'azure-cost',
+      ];
+      const questionId =
+        questionIds[Math.floor(Math.random() * questionIds.length)];
+      const tag = tags[Math.floor(Math.random() * tags.length)];
+      return `https://stackoverflow.com/questions/${questionId}/how-to-${tag.replace('-', '-')}?tab=votes`;
+    },
+    'Hacker News': () => {
+      const itemIds = [
+        '28934567',
+        '29045678',
+        '30156789',
+        '31267890',
+        '32378901',
+      ];
+      const itemId = itemIds[Math.floor(Math.random() * itemIds.length)];
+      return `https://news.ycombinator.com/item?id=${itemId}`;
+    },
+    TechCrunch: () => {
+      const years = ['2023', '2024'];
+      const months = ['01', '03', '05', '07', '09', '11'];
+      const articles = [
+        'salesforce-alternatives-small-business',
+        'erp-cloud-migration-trends',
+        'aws-cost-optimization-guide',
+        'finops-best-practices-2024',
+        'cloud-cost-management-tools',
+      ];
+      const year = years[Math.floor(Math.random() * years.length)];
+      const month = months[Math.floor(Math.random() * months.length)];
+      const article = articles[Math.floor(Math.random() * articles.length)];
+      return `https://techcrunch.com/${year}/${month}/${article}/?utm_source=feed&utm_medium=rss`;
+    },
+    'Product Hunt': () => {
+      const products = [
+        'salesforce-alternative-crm',
+        'cloud-cost-optimizer',
+        'erp-management-suite',
+        'finops-dashboard',
+        'aws-cost-analyzer',
+      ];
+      const product = products[Math.floor(Math.random() * products.length)];
+      return `https://producthunt.com/posts/${product}?utm_source=badge-featured`;
+    },
+    'GitHub Issues': () => {
+      const repos = [
+        'salesforce/salesforce-cli',
+        'aws/aws-cost-management',
+        'microsoft/azure-cost-management',
+        'terraform-providers/terraform-provider-aws',
+        'kubernetes/kubernetes',
+      ];
+      const issueNumbers = ['1234', '5678', '9012', '3456', '7890'];
+      const repo = repos[Math.floor(Math.random() * repos.length)];
+      const issueNumber =
+        issueNumbers[Math.floor(Math.random() * issueNumbers.length)];
+      return `https://github.com/${repo}/issues/${issueNumber}`;
+    },
+    Medium: () => {
+      const authors = [
+        '@techwriter',
+        '@cloudexpert',
+        '@devopsguru',
+        '@finopsspecialist',
+        '@erpexpert',
+      ];
+      const slugs = [
+        'salesforce-vs-hubspot-comparison-2024',
+        'aws-cost-optimization-strategies',
+        'erp-implementation-guide',
+        'finops-culture-transformation',
+        'cloud-cost-management-best-practices',
+      ];
+      const author = authors[Math.floor(Math.random() * authors.length)];
+      const slug = slugs[Math.floor(Math.random() * slugs.length)];
+      return `https://medium.com/${author}/${slug}?source=rss----2b6b4b4b4b4b---4`;
+    },
+    'Dev.to': () => {
+      const authors = [
+        'techblogger',
+        'clouddev',
+        'devopseng',
+        'awsexpert',
+        'azuredev',
+      ];
+      const slugs = [
+        'salesforce-integration-tips',
+        'aws-cost-monitoring-setup',
+        'erp-system-selection-guide',
+        'finops-automation-tools',
+        'cloud-cost-alerts-setup',
+      ];
+      const author = authors[Math.floor(Math.random() * authors.length)];
+      const slug = slugs[Math.floor(Math.random() * slugs.length)];
+      return `https://dev.to/${author}/${slug}`;
+    },
+    Quora: () => {
+      const topics = [
+        'What-are-the-best-Salesforce-alternatives',
+        'How-to-reduce-AWS-costs',
+        'Which-ERP-system-is-best-for-manufacturing',
+        'What-is-FinOps-and-why-is-it-important',
+        'How-to-implement-cloud-cost-management',
+      ];
+      const topic = topics[Math.floor(Math.random() * topics.length)];
+      return `https://quora.com/${topic}?share=1`;
+    },
+    Twitter: () => {
+      const users = [
+        'salesforceohana',
+        'awscloud',
+        'azure',
+        'finopsorg',
+        'erptoday',
+      ];
+      const tweetIds = [
+        '1234567890123456789',
+        '9876543210987654321',
+        '5555555555555555555',
+        '1111111111111111111',
+        '9999999999999999999',
+      ];
+      const user = users[Math.floor(Math.random() * users.length)];
+      const tweetId = tweetIds[Math.floor(Math.random() * tweetIds.length)];
+      return `https://twitter.com/${user}/status/${tweetId}?utm_source=twitter&utm_medium=social`;
+    },
+  };
+
   // Create source details
   for (const source of sources) {
-    const detailCount = Math.floor(Math.random() * 5) + 3; // 3-7 details per source
+    const detailCount = Math.floor(Math.random() * 2) + 4; // 4-5 details per source
 
     for (let i = 0; i < detailCount; i++) {
       // Ensure Yael Group mentions stay low (0-3 per detail, with most having 0-1)
@@ -534,9 +786,15 @@ const main = async () => {
         Math.random() * (source.competitionMentions / 2)
       );
 
+      // Generate realistic URL using the appropriate generator
+      const urlGenerator = urlGenerators[source.source];
+      const url = urlGenerator
+        ? urlGenerator()
+        : `${source.baseUrl}/topic-${i + 1}`;
+
       await prisma.sourceDetail.create({
         data: {
-          url: `${source.baseUrl}/topic-${i + 1}`,
+          url: url,
           yaelGroupMentions: yaelMentions,
           competitionMentions: compMentions,
           totalMentions: yaelMentions + compMentions,
