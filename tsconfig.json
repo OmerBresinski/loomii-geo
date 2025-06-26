@@ -33,16 +33,9 @@
       "@/utils/*": ["src/utils/*"]
     }
   },
-  "include": [
-    "src/**/*",
-    "prisma/seed.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts"
-  ],
+  "include": ["src/**/*", "src/seed.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"],
   "ts-node": {
     "require": ["tsconfig-paths/register"]
   }
-} 
+}
