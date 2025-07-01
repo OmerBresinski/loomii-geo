@@ -4,6 +4,7 @@ import { CompetitorsResponse } from '../types';
 
 export const findAllCompetitors = async (): Promise<CompetitorsResponse> => {
   const competitors = await prisma.competitor.findMany({
+    take: 10,
     include: {
       historyData: {
         where: {
