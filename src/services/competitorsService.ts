@@ -14,7 +14,7 @@ export const findAllCompetitors = async (): Promise<CompetitorsResponse> => {
         orderBy: { date: 'asc' },
       },
     },
-    orderBy: { visibility: 'desc' },
+    orderBy: { rank: 'asc' },
   });
 
   // Extract all history data for the response
