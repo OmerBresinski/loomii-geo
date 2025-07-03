@@ -6,7 +6,26 @@ export async function clearDatabase() {
   console.log('Clearing database...');
 
   // The order is important to avoid foreign key constraint violations
-  // ... existing code ...
+  const tableNames = [
+    'MentionDetail',
+    'CompanyMention',
+    'SourceUrl',
+    'PromptRun',
+    'Prompt',
+    'Topic',
+    'Company',
+    'Source',
+    'AIProvider',
+  ];
+
+  await prisma.$transaction(
+    tableNames.map(table =>
+      prisma.$executeRawUnsafe(
+        `TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE;`
+      )
+    )
+  );
+
   console.log('Database cleared successfully.');
 }
 
