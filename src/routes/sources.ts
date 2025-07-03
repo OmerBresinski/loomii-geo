@@ -1,71 +1,48 @@
 import { Router } from 'express';
-import { asyncHandler } from '../middleware/errorHandler';
-import {
-  validate,
-  sourcesQuerySchema,
-  uuidParamSchema,
-} from '../middleware/validation';
-import * as sourcesController from '../controllers/sourcesController';
+import { prisma } from '@/utils/database';
+import { subDays } from 'date-fns';
 
 const router = Router();
 
-// GET /api/sources - Get all sources with optional filtering
-router.get(
-  '/',
-  validate(sourcesQuerySchema),
-  asyncHandler(sourcesController.getSources)
-);
+router.get('/', async (req, res) => {
+  const companyId = Number(req.query.companyId);
+  const span = Number(((req.query.days as string) ?? '30').replace(/\\D/g, ''));
+  const since = subDays(new Date(), span);
 
-// GET /api/sources/:id - Get source by ID
-router.get(
-  '/:id',
-  validate(uuidParamSchema),
-  asyncHandler(sourcesController.getSourceById)
-);
+  const details = await prisma.mentionDetail.findMany({
+    where: { promptRun: { runAt: { gte: since } } },
+    include: { sourceUrl: { include: { source: true } } },
+  });
 
-// GET /api/sources/:id/details - Get source with details
-router.get(
-  '/:id/details',
-  validate(uuidParamSchema),
-  asyncHandler(sourcesController.getSourceWithDetails)
-);
+  const map = new Map<
+    string,
+    {
+      source: string;
+      url: string;
+      companyMentions: number;
+      competitorMentions: number;
+      total: number;
+    }
+  >();
 
-// POST /api/sources - Create new source
-router.post('/', asyncHandler(sourcesController.createSource));
+  details.forEach(d => {
+    const key = d.sourceUrl.url;
+    if (!map.has(key)) {
+      map.set(key, {
+        source: d.sourceUrl.source.name,
+        url: d.sourceUrl.url,
+        companyMentions: 0,
+        competitorMentions: 0,
+        total: 0,
+      });
+    }
+    const row = map.get(key)!;
+    if (d.companyId === companyId) row.companyMentions += d.count;
+    else row.competitorMentions += d.count;
+    row.total += d.count;
+  });
 
-// PUT /api/sources/:id - Update source
-router.put(
-  '/:id',
-  validate(uuidParamSchema),
-  asyncHandler(sourcesController.updateSource)
-);
+  res.json(Array.from(map.values()).sort((a, b) => b.total - a.total));
+});
 
-// DELETE /api/sources/:id - Delete source
-router.delete(
-  '/:id',
-  validate(uuidParamSchema),
-  asyncHandler(sourcesController.deleteSource)
-);
-
-// POST /api/sources/:id/details - Add source detail
-router.post(
-  '/:id/details',
-  validate(uuidParamSchema),
-  asyncHandler(sourcesController.addSourceDetail)
-);
-
-// PUT /api/sources/:id/details/:detailId - Update source detail
-router.put(
-  '/:id/details/:detailId',
-  validate(uuidParamSchema),
-  asyncHandler(sourcesController.updateSourceDetail)
-);
-
-// DELETE /api/sources/:id/details/:detailId - Delete source detail
-router.delete(
-  '/:id/details/:detailId',
-  validate(uuidParamSchema),
-  asyncHandler(sourcesController.deleteSourceDetail)
-);
-
-export default router;
+export const sourcesRouter = router;

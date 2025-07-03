@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
     provider = "prisma-client-js"
 }
@@ -10,129 +7,106 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
+model Company {
+    id        Int      @id @default(autoincrement())
+    name      String
+    domain    String   @unique
+    createdAt DateTime @default(now())
+
+    topics         Topic[]
+    mentions       CompanyMention[]
+    mentionDetails MentionDetail[]
+}
+
 model Topic {
-    id                String   @id @default(uuid())
-    name              String   @unique
-    responseCount     Int      @default(0)
-    visibility        Float    @default(0) // 0-100
-    sentimentPositive Float    @default(0) // 0-100
-    sentimentNeutral  Float    @default(0) // 0-100
-    sentimentNegative Float    @default(0) // 0-100
-    status            Boolean  @default(true)
-    createdAt         DateTime @default(now())
-    updatedAt         DateTime @updatedAt
+    id        Int      @id @default(autoincrement())
+    company   Company  @relation(fields: [companyId], references: [id])
+    companyId Int
+    name      String
+    createdAt DateTime @default(now())
 
     prompts Prompt[]
 
-    @@map("topics")
+    @@unique([companyId, name])
 }
 
 model Prompt {
-    id                String   @id @default(uuid())
-    text              String
-    responses         Int      @default(0)
-    visibility        Float    @default(0) // 0-100
-    sentimentPositive Float    @default(0) // 0-100
-    sentimentNeutral  Float    @default(0) // 0-100
-    sentimentNegative Float    @default(0) // 0-100
-    status            Boolean  @default(true)
-    createdAt         DateTime @default(now())
-    updatedAt         DateTime @updatedAt
+    id        Int      @id @default(autoincrement())
+    topic     Topic    @relation(fields: [topicId], references: [id])
+    topicId   Int
+    text      String
+    isActive  Boolean  @default(true)
+    createdAt DateTime @default(now())
 
-    topicId String
-    topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
-
-    aiProviders AIProviderResponse[]
-
-    @@map("prompts")
+    promptRuns PromptRun[]
 }
 
-enum AIProvider {
-    ChatGPT
-    Gemini
-    Perplexity
+model AIProvider {
+    id   Int    @id @default(autoincrement())
+    name String @unique
+
+    promptRuns PromptRun[]
 }
 
-enum InsightImpact {
-    Low
-    Medium
-    High
+model PromptRun {
+    id          Int        @id @default(autoincrement())
+    prompt      Prompt     @relation(fields: [promptId], references: [id])
+    promptId    Int
+    provider    AIProvider @relation(fields: [providerId], references: [id])
+    providerId  Int
+    runAt       DateTime   @default(now())
+    responseRaw Json
+
+    companyMentions CompanyMention[]
+    mentionDetails  MentionDetail[]
+
+    @@index([runAt])
 }
 
-model AIProviderResponse {
-    id                     String        @id @default(uuid())
-    company                String
-    provider               AIProvider
-    homepage               String
-    response               String        @db.Text
-    insightTitle           String
-    insightSummary         String        @db.Text
-    insightProposedActions String[]
-    insightImpact          InsightImpact
-    insightLinks           String[]
-    sources                String[]
-    companyMentions        String[]
-    competitionMentions    String[]
+model CompanyMention {
+    id            Int       @id @default(autoincrement())
+    promptRun     PromptRun @relation(fields: [promptRunId], references: [id])
+    promptRunId   Int
+    company       Company   @relation(fields: [companyId], references: [id])
+    companyId     Int
+    sentiment     Float // −1 … +1  (per-run)
+    visibilityPct Float // 100 if the company was mentioned in this run
 
-    promptId String
-    prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+    mentionDetails MentionDetail[]
 
-    @@map("ai_provider_responses")
-}
-
-model Competitor {
-    id                String   @id @default(uuid())
-    name              String   @unique
-    rank              Int
-    sentimentPositive Float    @default(0) // 0-100
-    sentimentNeutral  Float    @default(0) // 0-100
-    sentimentNegative Float    @default(0) // 0-100
-    visibility        Float    @default(0) // 0-100
-    visibilityChange  Float    @default(0) // -100 to 100
-    favicon           String?
-    createdAt         DateTime @default(now())
-    updatedAt         DateTime @updatedAt
-
-    historyData CompetitorHistory[]
-
-    @@map("competitors")
-}
-
-model CompetitorHistory {
-    id         String   @id @default(uuid())
-    date       DateTime
-    visibility Float // 0-100
-
-    competitorId String
-    competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
-
-    @@map("competitor_history")
+    @@unique([promptRunId, companyId])
+    @@index([companyId])
 }
 
 model Source {
-    id                  String   @id @default(uuid())
-    source              String   @unique
-    baseUrl             String
-    yaelGroupMentions   Int      @default(0)
-    competitionMentions Int      @default(0)
-    totalMentions       Int      @default(0)
-    createdAt           DateTime @default(now())
-    updatedAt           DateTime @updatedAt
+    id     Int    @id @default(autoincrement())
+    domain String @unique
+    name   String
 
-    details SourceDetail[]
-
-    @@map("sources")
+    urls SourceUrl[]
 }
 
-model SourceDetail {
-    id                  String @id @default(uuid())
-    url                 String
-    yaelGroupMentions   Int    @default(0)
-    competitionMentions Int    @default(0)
-    totalMentions       Int    @default(0)
+model SourceUrl {
+    id        Int      @id @default(autoincrement())
+    source    Source   @relation(fields: [sourceId], references: [id])
+    sourceId  Int
+    url       String   @unique
+    createdAt DateTime @default(now())
 
-    sourceId String
-    source   Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+    mentionDetails MentionDetail[]
+}
 
-    @@map("source_details")
+model MentionDetail {
+    id               Int             @id @default(autoincrement())
+    promptRun        PromptRun       @relation(fields: [promptRunId], references: [id])
+    promptRunId      Int
+    company          Company         @relation(fields: [companyId], references: [id])
+    companyId        Int
+    sourceUrl        SourceUrl       @relation(fields: [sourceUrlId], references: [id])
+    sourceUrlId      Int
+    count            Int // always 1 → presence in this run
+    CompanyMention   CompanyMention? @relation(fields: [companyMentionId], references: [id])
+    companyMentionId Int?
+
+    @@index([sourceUrlId])
 }

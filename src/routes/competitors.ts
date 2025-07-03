@@ -1,49 +1,40 @@
 import { Router } from 'express';
-import { asyncHandler } from '../middleware/errorHandler';
-import { validate, uuidParamSchema } from '../middleware/validation';
-import * as competitorsController from '../controllers/competitorsController';
+import { prisma } from '@/utils/database';
+import { subDays } from 'date-fns';
 
 const router = Router();
 
-// GET /api/competitors - Get all competitors with history data
-router.get('/', asyncHandler(competitorsController.getCompetitors));
+router.get('/', async (req, res) => {
+  const companyId = Number(req.query.companyId);
+  const span = Number(((req.query.days as string) ?? '30').replace(/\\D/g, ''));
+  const since = subDays(new Date(), span);
 
-// GET /api/competitors/:id - Get competitor by ID
-router.get(
-  '/:id',
-  validate(uuidParamSchema),
-  asyncHandler(competitorsController.getCompetitorById)
-);
+  const rows = await prisma.companyMention.groupBy({
+    by: ['companyId'],
+    where: { promptRun: { runAt: { gte: since } } },
+    _avg: { sentiment: true },
+    _sum: { visibilityPct: true },
+    orderBy: { _sum: { visibilityPct: 'desc' } },
+  });
 
-// GET /api/competitors/:id/history - Get competitor with history data
-router.get(
-  '/:id/history',
-  validate(uuidParamSchema),
-  asyncHandler(competitorsController.getCompetitorWithHistory)
-);
+  const leaderboard = await Promise.all(
+    rows.map(async (row, idx) => {
+      const company = await prisma.company.findUnique({
+        where: { id: row.companyId },
+      });
+      return {
+        rank: idx + 1,
+        companyId: row.companyId,
+        name: company?.name ?? 'Unknown',
+        domain: company?.domain ?? '',
+        visibility: row._sum.visibilityPct ?? 0,
+        sentiment: row._avg.sentiment ?? 0,
+        isSelf: row.companyId === companyId,
+      };
+    })
+  );
 
-// POST /api/competitors - Create new competitor
-router.post('/', asyncHandler(competitorsController.createCompetitor));
+  res.json(leaderboard);
+});
 
-// PUT /api/competitors/:id - Update competitor
-router.put(
-  '/:id',
-  validate(uuidParamSchema),
-  asyncHandler(competitorsController.updateCompetitor)
-);
-
-// DELETE /api/competitors/:id - Delete competitor
-router.delete(
-  '/:id',
-  validate(uuidParamSchema),
-  asyncHandler(competitorsController.deleteCompetitor)
-);
-
-// POST /api/competitors/:id/history - Add history entry
-router.post(
-  '/:id/history',
-  validate(uuidParamSchema),
-  asyncHandler(competitorsController.addHistoryEntry)
-);
-
-export default router;
+export const competitorsRouter = router;
