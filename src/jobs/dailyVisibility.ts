@@ -90,33 +90,50 @@ const upsertCompany = async (name: string, domain: string) =>
     })
   ).id;
 
+/**
+ *  Main cron – run daily (e.g. Vercel Cron 07:00 UTC)                   *
+ * --------------------------------------------------------------------- */
 export async function runDailyVisibilityJob() {
+  console.log('🚀 Starting daily visibility job...');
   const companies = await prisma.company.findMany({
     include: {
       topics: { include: { prompts: { where: { isActive: true } } } },
     },
   });
+  console.log(`Found ${companies.length} companies to process.`);
 
   for (const co of companies) {
+    console.log(`\n🏢 Processing company: ${co.name}`);
     for (const topic of co.topics) {
+      console.log(`  📚 Processing topic: ${topic.name}`);
       for (const prompt of topic.prompts) {
+        console.log(`    💬 Processing prompt: "${prompt.text}"`);
         for (const provider of PROVIDERS) {
+          console.log(`      🤖 Using provider: ${provider.key}`);
+          // 0 · get the model's answer
+          console.log('      [1/4] Getting response from AI provider...');
           const answer = await provider.call(prompt.text);
-          const mentionsResponse = await extractMentions(prompt.text, answer);
-          const sentimentsResponse = await scoreSentiments(
-            answer,
-            mentionsResponse.companyMentions.map(({ name, domain }) => ({
-              name,
-              domain,
-            }))
-          );
-          const sentimentMap = new Map(
-            sentimentsResponse.sentiments.map(s => [
-              s.domain || s.name,
-              s.sentiment,
-            ])
+
+          // 1 · extract companies + URLs
+          console.log('      [2/4] Extracting company mentions...');
+          const ext = await extractMentions(prompt.text, answer);
+          console.log(
+            `      Found ${ext.companyMentions.length} company mentions.`
           );
 
+          // 2 · score sentiment per company
+          console.log('      [3/4] Scoring sentiments...');
+          const sent = await scoreSentiments(
+            answer,
+            ext.companyMentions.map(({ name, domain }) => ({ name, domain }))
+          );
+          const sentimentMap = new Map(
+            sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
+          );
+          console.log(`      Scored ${sent.sentiments.length} sentiments.`);
+
+          // 3 · persist PromptRun
+          console.log('      [4/4] Persisting data to database...');
           const promptRun = await prisma.promptRun.create({
             data: {
               promptId: prompt.id,
@@ -124,12 +141,14 @@ export async function runDailyVisibilityJob() {
               responseRaw: answer,
             },
           });
+          console.log(`      Created PromptRun (ID: ${promptRun.id})`);
 
-          for (const m of mentionsResponse.companyMentions) {
+          // 4 · persist mentions + sources
+          for (const m of ext.companyMentions) {
             const companyId = await upsertCompany(m.name, m.domain);
             const sentiment = sentimentMap.get(m.domain) ?? 0;
 
-            await prisma.companyMention.create({
+            const companyMention = await prisma.companyMention.create({
               data: {
                 promptRunId: promptRun.id,
                 companyId,
@@ -137,9 +156,12 @@ export async function runDailyVisibilityJob() {
                 sentiment,
               },
             });
+            console.log(
+              `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
+            );
 
             for (const url of m.sources) {
-              const domain = new URL(url).hostname.replace(/^www\\./, '');
+              const domain = new URL(url).hostname.replace(/^www\./, '');
               const sourceId = (
                 await prisma.source.upsert({
                   where: { domain },
@@ -166,8 +188,12 @@ export async function runDailyVisibilityJob() {
               });
             }
           }
+          console.log(
+            `      Finished persisting data for prompt: "${prompt.text}"`
+          );
         }
       }
     }
   }
+  console.log('\n✅ Daily visibility job finished successfully!');
 }
