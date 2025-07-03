@@ -18,7 +18,8 @@
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:daily": "ts-node src/jobs/testDailyJob.ts"
   },
   "keywords": [
     "express",
