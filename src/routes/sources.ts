@@ -42,7 +42,11 @@ router.get('/:companyId', async (req, res) => {
     row.total += d.count;
   });
 
-  res.json(Array.from(map.values()).sort((a, b) => b.total - a.total));
+  res.json(
+    Array.from(map.values()).sort(
+      (a, b) => b.companyMentions - a.companyMentions || b.total - a.total
+    )
+  );
 });
 
 export const sourcesRouter = router;

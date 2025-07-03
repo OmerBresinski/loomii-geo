@@ -6,7 +6,7 @@ const router = Router();
 
 router.get('/:companyId', async (req, res) => {
   const companyId = Number(req.params.companyId);
-  const span = Number(((req.query.days as string) ?? '30').replace(/\\D/g, ''));
+  const span = Number(((req.query.days as string) ?? '30').replace(/\D/g, ''));
   const since = subDays(new Date(), span);
 
   const topics = await prisma.topic.findMany({
@@ -16,7 +16,12 @@ router.get('/:companyId', async (req, res) => {
         include: {
           promptRuns: {
             where: { runAt: { gte: since } },
-            include: { companyMentions: { where: { companyId } } },
+            include: {
+              companyMentions: {
+                where: { companyId },
+                select: { sentiment: true },
+              },
+            },
           },
         },
       },
@@ -25,21 +30,27 @@ router.get('/:companyId', async (req, res) => {
 
   const payload = topics
     .map(t => {
-      const vis: number[] = [],
-        sent: number[] = [];
+      let visSum = 0;
+      let runCnt = 0;
+      const sentiments: number[] = [];
+
       t.prompts.forEach(p =>
-        p.promptRuns.forEach(r =>
-          r.companyMentions.forEach(cm => {
-            vis.push(cm.visibilityPct);
-            sent.push(cm.sentiment);
-          })
-        )
+        p.promptRuns.forEach(r => {
+          runCnt += 1;
+          if (r.companyMentions.length) {
+            visSum += 100;
+            sentiments.push(r.companyMentions[0].sentiment);
+          }
+        })
       );
+
       return {
         topicId: t.id,
         topicName: t.name,
-        visibility: vis.length ? vis.reduce((a, b) => a + b) / vis.length : 0,
-        sentiment: sent.length ? sent.reduce((a, b) => a + b) / sent.length : 0,
+        visibility: runCnt ? visSum / runCnt : 0,
+        sentiment: sentiments.length
+          ? sentiments.reduce((a, b) => a + b) / sentiments.length
+          : 0,
       };
     })
     .sort((a, b) => b.visibility - a.visibility);
