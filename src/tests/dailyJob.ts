@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { clearDatabase } from './clear';
-import { seedDatabase } from './seed';
-import { runDailyVisibilityJob } from './dailyVisibility';
+import { clearDatabase } from '../jobs/clear';
+import { seedDatabase } from '../utils/seed';
+import { runDailyVisibilityJob } from '../jobs/dailyVisibility';
 
 const prisma = new PrismaClient();
 

@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-async function seedDatabase() {
+export async function seedDatabase() {
   console.log('Seeding database...');
 
   const company = await prisma.company.create({
@@ -17,6 +17,7 @@ async function seedDatabase() {
               create: [
                 { text: 'Which is the best app for trading DeFi tokens?' },
                 { text: 'Where can I trade DeFi tokens?' },
+                { text: 'Should I buy DeFi on moonpay?' },
               ],
             },
           },
@@ -26,6 +27,7 @@ async function seedDatabase() {
               create: [
                 { text: "What's the best crypto app?" },
                 { text: 'Where can I buy bitcoin with apple pay?' },
+                { text: 'Is moonpay easy to use?' },
               ],
             },
           },
@@ -51,12 +53,15 @@ async function seedDatabase() {
   });
 }
 
-seedDatabase()
-  .catch(e => {
-    console.error('An error occurred while seeding the database:');
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Allow running the script directly
+if (require.main === module) {
+  seedDatabase()
+    .catch(e => {
+      console.error('An error occurred while seeding the database:');
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

@@ -19,7 +19,11 @@
     "format": "prettier --write src/**/*.ts",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:daily": "ts-node src/jobs/testDailyJob.ts"
+    "test:daily": "ts-node src/tests/dailyJob.ts",
+    "test:analytics": "ts-node src/tests/testAnalytics.ts",
+    "test:competitors": "ts-node src/tests/testCompetitors.ts",
+    "test:sources": "ts-node src/tests/testSources.ts",
+    "test:api": "npm run test:analytics && npm run test:competitors && npm run test:sources"
   },
   "keywords": [
     "express",
@@ -63,7 +67,9 @@
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.1",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "node-fetch": "^3.3.2",
+    "@types/node-fetch": "^2.6.11"
   },
   "engines": {
     "node": ">=18.0.0"

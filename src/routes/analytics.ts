@@ -4,8 +4,8 @@ import { subDays } from 'date-fns';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
-  const companyId = Number(req.query.companyId);
+router.get('/:companyId', async (req, res) => {
+  const companyId = Number(req.params.companyId);
   const span = Number(((req.query.days as string) ?? '30').replace(/\\D/g, ''));
   const since = subDays(new Date(), span);
 

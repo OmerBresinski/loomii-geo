@@ -4,17 +4,16 @@ import { subDays } from 'date-fns';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
-  const companyId = Number(req.query.companyId);
+router.get('/:companyId', async (req, res) => {
+  const companyId = Number(req.params.companyId);
   const span = Number(((req.query.days as string) ?? '30').replace(/\\D/g, ''));
   const since = subDays(new Date(), span);
 
   const rows = await prisma.companyMention.groupBy({
     by: ['companyId'],
     where: { promptRun: { runAt: { gte: since } } },
-    _avg: { sentiment: true },
-    _sum: { visibilityPct: true },
-    orderBy: { _sum: { visibilityPct: 'desc' } },
+    _avg: { sentiment: true, visibilityPct: true },
+    orderBy: { _avg: { visibilityPct: 'desc' } },
   });
 
   const leaderboard = await Promise.all(
@@ -27,7 +26,7 @@ router.get('/', async (req, res) => {
         companyId: row.companyId,
         name: company?.name ?? 'Unknown',
         domain: company?.domain ?? '',
-        visibility: row._sum.visibilityPct ?? 0,
+        visibility: row._avg.visibilityPct ?? 0,
         sentiment: row._avg.sentiment ?? 0,
         isSelf: row.companyId === companyId,
       };
