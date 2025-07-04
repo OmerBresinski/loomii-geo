@@ -16,7 +16,7 @@ router.get('/profile', (req, res) => {
     });
   }
 
-  res.json({
+  return res.json({
     success: true,
     data: {
       userId: req.auth.userId,
