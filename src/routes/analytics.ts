@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import { prisma } from '@/utils/database';
 import { subDays } from 'date-fns';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+// Apply authentication middleware to all routes in this router
+router.use(requireAuth);
 
 router.get('/:companyId', async (req, res) => {
   const companyId = Number(req.params.companyId);
@@ -60,4 +64,4 @@ router.get('/:companyId', async (req, res) => {
   res.json(payload);
 });
 
-export const analyticsRouter = router;
+export { router as analyticsRouter };

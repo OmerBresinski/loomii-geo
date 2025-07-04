@@ -1,48 +1,76 @@
 import { Router } from 'express';
 import { prisma } from '@/utils/database';
-import { subDays } from 'date-fns';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
+// Apply authentication middleware to all routes in this router
+router.use(requireAuth);
+
 router.get('/:companyId', async (req, res) => {
-  const seedId = Number(req.query.companyId);
+  const companyId = Number(req.params.companyId);
   const span = Number(((req.query.days as string) ?? '30').replace(/\D/g, ''));
-  const since = subDays(new Date(), span);
 
-  const totalRuns = await prisma.promptRun.count({
-    where: { runAt: { gte: since } },
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    include: {
+      topics: {
+        include: {
+          prompts: {
+            include: {
+              promptRuns: {
+                where: {
+                  runAt: {
+                    gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
+                  },
+                },
+                include: {
+                  companyMentions: {
+                    include: { company: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
-  const rows = await prisma.companyMention.groupBy({
-    by: ['companyId'],
-    where: { promptRun: { runAt: { gte: since } } },
-    _count: { _all: true },
-    _avg: { sentiment: true },
-  });
+  if (!company) {
+    return res.status(404).json({ error: 'Company not found' });
+  }
 
-  const leaderboard = await Promise.all(
-    rows
-      .sort((a, b) => b._count._all - a._count._all)
-      .map(async (row, idx) => {
-        const company = await prisma.company.findUnique({
-          where: { id: row.companyId },
+  const competitorData = new Map<number, any>();
+
+  company.topics.forEach(topic => {
+    topic.prompts.forEach(prompt => {
+      prompt.promptRuns.forEach(run => {
+        run.companyMentions.forEach(mention => {
+          if (mention.companyId !== companyId) {
+            const existing = competitorData.get(mention.companyId) || {
+              companyId: mention.companyId,
+              companyName: mention.company.name,
+              mentions: 0,
+              totalSentiment: 0,
+            };
+            existing.mentions += 1;
+            existing.totalSentiment += mention.sentiment;
+            competitorData.set(mention.companyId, existing);
+          }
         });
+      });
+    });
+  });
 
-        return {
-          rank: idx + 1,
-          companyId: row.companyId,
-          name: company?.name ?? 'Unknown',
-          domain: company?.domain ?? '',
-          visibility: +(
-            totalRuns ? (row._count._all / totalRuns) * 100 : 0
-          ).toFixed(2),
-          sentiment: +(row._avg.sentiment ?? 0).toFixed(2),
-          isSelf: row.companyId === seedId,
-        };
-      })
-  );
+  const payload = Array.from(competitorData.values())
+    .map(comp => ({
+      ...comp,
+      averageSentiment: comp.totalSentiment / comp.mentions,
+    }))
+    .sort((a, b) => b.mentions - a.mentions);
 
-  res.json(leaderboard);
+  res.json(payload);
 });
 
-export const competitorsRouter = router;
+export { router as competitorsRouter };
