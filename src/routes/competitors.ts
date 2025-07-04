@@ -70,7 +70,7 @@ router.get('/:companyId', async (req, res) => {
     }))
     .sort((a, b) => b.mentions - a.mentions);
 
-  res.json(payload);
+  return res.json(payload);
 });
 
 export { router as competitorsRouter };
