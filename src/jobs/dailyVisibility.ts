@@ -242,9 +242,6 @@ export async function runDailyVisibilityJob() {
 
             for (const url of m.sources) {
               const websiteNameResult = await extractWebsiteName(url);
-              console.log(
-                `        - Extracted website name: ${websiteNameResult.websiteName} for URL: ${url}`
-              );
 
               const domain = new URL(url).hostname.replace(/^www\./, '');
               const sourceId = (
