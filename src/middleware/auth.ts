@@ -1,6 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { clerkClient } from '@clerk/clerk-sdk-node';
+import {
+  clerkMiddleware,
+  requireAuth as clerkRequireAuth,
+  getAuth,
+} from '@clerk/express';
 import { UnauthorizedError } from '../utils/errors';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Extend Request interface to include user information
 declare global {
@@ -8,12 +15,18 @@ declare global {
     interface Request {
       auth?: {
         userId: string;
-        sessionId: string;
+        sessionId?: string;
         user?: any;
       };
     }
   }
 }
+
+// Initialize Clerk middleware
+export const initClerkMiddleware = clerkMiddleware({
+  secretKey: process.env.CLERK_SECRET_KEY,
+  publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+});
 
 export const requireAuth = async (
   req: Request,
@@ -21,42 +34,21 @@ export const requireAuth = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    // Get the session token from the Authorization header
-    const authHeader = req.headers.authorization;
+    // Use Clerk's built-in auth checking
+    const auth = getAuth(req);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('No valid authorization header found');
+    if (!auth.userId) {
+      throw new UnauthorizedError('Authentication required');
     }
 
-    const sessionToken = authHeader.substring(7); // Remove 'Bearer ' prefix
-
-    if (!process.env.CLERK_SECRET_KEY) {
-      throw new Error('CLERK_SECRET_KEY is not configured');
-    }
-
-    // Verify the session token with Clerk
-    const session = await clerkClient.sessions.verifySession(
-      sessionToken,
-      process.env.CLERK_SECRET_KEY
-    );
-
-    if (!session) {
-      throw new UnauthorizedError('Invalid session token');
-    }
-
-    // Get user information
-    const user = await clerkClient.users.getUser(session.userId);
-
-    // Attach user info to request
+    // Attach simplified auth info to request
     req.auth = {
-      userId: session.userId,
-      sessionId: session.id,
+      userId: auth.userId,
+      sessionId: auth.sessionId,
       user: {
-        id: user.id,
-        email: user.emailAddresses[0]?.emailAddress,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        imageUrl: user.imageUrl,
+        id: auth.userId,
+        // Note: For full user details, you'd need to fetch from Clerk
+        // but for basic auth, the userId is sufficient
       },
     };
 
@@ -78,36 +70,14 @@ export const optionalAuth = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
+    const auth = getAuth(req);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return next();
-    }
-
-    const sessionToken = authHeader.substring(7);
-
-    if (!process.env.CLERK_SECRET_KEY) {
-      console.warn('CLERK_SECRET_KEY is not configured');
-      return next();
-    }
-
-    const session = await clerkClient.sessions.verifySession(
-      sessionToken,
-      process.env.CLERK_SECRET_KEY
-    );
-
-    if (session) {
-      const user = await clerkClient.users.getUser(session.userId);
-
+    if (auth.userId) {
       req.auth = {
-        userId: session.userId,
-        sessionId: session.id,
+        userId: auth.userId,
+        sessionId: auth.sessionId,
         user: {
-          id: user.id,
-          email: user.emailAddresses[0]?.emailAddress,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          imageUrl: user.imageUrl,
+          id: auth.userId,
         },
       };
     }

@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
+import { initClerkMiddleware } from './middleware/auth';
 
 // Load environment variables
 dotenv.config();
@@ -18,8 +19,26 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-// CORS configuration
-app.use(cors());
+// CORS configuration - allow all origins for now to fix the immediate issue
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Cache-Control',
+      'X-HTTP-Method-Override',
+    ],
+  })
+);
+
+// Initialize Clerk middleware
+app.use(initClerkMiddleware);
 
 // Rate limiting
 const limiter = rateLimit({
