@@ -4,15 +4,14 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-// Apply authentication middleware to all routes in this router
 router.use(requireAuth);
 
-router.get('/:companyId', async (req, res) => {
-  const companyId = Number(req.params.companyId);
+router.get('/', async (req, res) => {
+  const organizationId = req.auth?.organization?.id;
   const span = Number(((req.query.days as string) ?? '30').replace(/\D/g, ''));
 
   const company = await prisma.company.findUnique({
-    where: { id: companyId },
+    where: { organizationId },
     include: {
       topics: {
         include: {
@@ -41,21 +40,29 @@ router.get('/:companyId', async (req, res) => {
     return res.status(404).json({ error: 'Company not found' });
   }
 
-  const competitorData = new Map<number, any>();
+  const competitorData = new Map<
+    number,
+    {
+      companyId: number;
+      companyName: string;
+      mentions: number;
+      sentiments: number[];
+    }
+  >();
 
   company.topics.forEach(topic => {
     topic.prompts.forEach(prompt => {
       prompt.promptRuns.forEach(run => {
         run.companyMentions.forEach(mention => {
-          if (mention.companyId !== companyId) {
+          if (mention.companyId !== company.id) {
             const existing = competitorData.get(mention.companyId) || {
               companyId: mention.companyId,
               companyName: mention.company.name,
               mentions: 0,
-              totalSentiment: 0,
+              sentiments: [],
             };
             existing.mentions += 1;
-            existing.totalSentiment += mention.sentiment;
+            existing.sentiments.push(mention.sentiment);
             competitorData.set(mention.companyId, existing);
           }
         });
@@ -65,8 +72,14 @@ router.get('/:companyId', async (req, res) => {
 
   const payload = Array.from(competitorData.values())
     .map(comp => ({
-      ...comp,
-      averageSentiment: comp.totalSentiment / comp.mentions,
+      companyId: comp.companyId,
+      companyName: comp.companyName,
+      mentions: comp.mentions,
+      averageSentiment:
+        comp.sentiments.length > 0
+          ? comp.sentiments.reduce((sum, sentiment) => sum + sentiment, 0) /
+            comp.sentiments.length
+          : 0,
     }))
     .sort((a, b) => b.mentions - a.mentions);
 

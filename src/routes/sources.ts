@@ -8,13 +8,26 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/', async (req, res) => {
+  const organizationId = req.auth?.organization?.id;
   const sources = await prisma.source.findMany({
     include: {
       urls: {
         include: {
           _count: {
             select: {
-              mentionDetails: true,
+              mentionDetails: {
+                where: {
+                  promptRun: {
+                    prompt: {
+                      topic: {
+                        company: {
+                          organizationId,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -30,6 +43,11 @@ router.get('/', async (req, res) => {
     name: source.name,
     domain: source.domain,
     urlCount: source.urls.length,
+    urls: source.urls.map(url => ({
+      id: url.id,
+      url: url.url,
+      mentionCount: url._count.mentionDetails,
+    })),
     totalMentions: source.urls.reduce(
       (sum, url) => sum + url._count.mentionDetails,
       0

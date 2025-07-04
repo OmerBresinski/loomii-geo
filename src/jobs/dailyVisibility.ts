@@ -66,7 +66,7 @@ async function extractMentions(
 
     TASK:
       1. Identify **every company or product** that the RESPONSE discusses in any way
-        (including the user's own company, competitors, partners, etc.).
+        (including the user's own company, competitors, partners, etc.) - BESIDES if it doesnt make sense, for example: If the user asks about the best Salesforce partner, or best NetSuite partner, then ignore Salesforce and NetSuite.
       2. For each company return:
           • name      → canonical brand / company / product name
           • domain    → primary web domain
@@ -182,9 +182,9 @@ export async function runDailyVisibilityJob() {
   });
   console.log(`Found ${companies.length} companies to process.`);
 
-  for (const co of companies) {
-    console.log(`\n🏢 Processing company: ${co.name}`);
-    for (const topic of co.topics) {
+  for (const company of companies) {
+    console.log(`\n🏢 Processing company: ${company.name}`);
+    for (const topic of company.topics) {
       console.log(`  📚 Processing topic: ${topic.name}`);
       for (const prompt of topic.prompts) {
         console.log(`    💬 Processing prompt: "${prompt.text}"`);

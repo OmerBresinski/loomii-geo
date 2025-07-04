@@ -17,6 +17,9 @@ declare global {
         userId: string;
         sessionId?: string;
         user?: any;
+        organization?: {
+          id: string;
+        };
       };
     }
   }
@@ -37,7 +40,9 @@ export const requireAuth = async (
     // Use Clerk's built-in auth checking
     const auth = getAuth(req);
 
-    if (!auth.userId) {
+    console.log({ auth });
+
+    if (!auth.userId || !auth.orgId) {
       throw new UnauthorizedError('Authentication required');
     }
 
@@ -45,6 +50,9 @@ export const requireAuth = async (
     req.auth = {
       userId: auth.userId,
       sessionId: auth.sessionId,
+      organization: {
+        id: auth.orgId,
+      },
       user: {
         id: auth.userId,
         // Note: For full user details, you'd need to fetch from Clerk

@@ -5,27 +5,42 @@ const prisma = new PrismaClient();
 export async function seedDatabase() {
   console.log('Seeding database...');
 
+  const organization = await prisma.organization.create({
+    data: {
+      name: 'Yael Group',
+      domain: 'https://yaelgroup.com/',
+      id: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s',
+    },
+  });
+
   const company = await prisma.company.create({
     data: {
-      name: 'Moonpay',
-      domain: 'moonpay.com',
+      name: 'Yael Group',
+      domain: 'https://yaelgroup.com/',
+      organizationId: organization.id,
       topics: {
         create: [
           {
-            name: 'Defi',
+            name: 'Salesforce',
             prompts: {
               create: [
-                { text: 'Which is the best app for trading DeFi tokens?' },
-                { text: 'Should I buy DeFi on moonpay?' },
+                {
+                  text: 'Who is the best Salesforce partner in Israel?',
+                },
+                {
+                  text: 'Which company should I choose for my Salesforce implementation?',
+                },
               ],
             },
           },
           {
-            name: 'General',
+            name: 'NetSuite',
             prompts: {
               create: [
-                { text: "What's the best crypto app?" },
-                { text: 'Is moonpay easy to use?' },
+                { text: 'Who is the best NetSuite partner in Israel?' },
+                {
+                  text: 'Which company should I choose for my NetSuite implementation?',
+                },
               ],
             },
           },

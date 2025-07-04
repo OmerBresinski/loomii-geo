@@ -9,12 +9,26 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/:companyId', async (req, res) => {
-  const companyId = Number(req.params.companyId);
+  const organizationId = req.auth?.organization?.id;
+  const company = await prisma.company.findFirst({
+    where: { organizationId },
+    include: {
+      topics: {
+        include: {
+          prompts: true,
+        },
+      },
+    },
+  });
   const span = Number(((req.query.days as string) ?? '30').replace(/\D/g, ''));
   const since = subDays(new Date(), span);
 
+  if (!company) {
+    return res.status(404).json({ error: 'Company not found' });
+  }
+
   const topics = await prisma.topic.findMany({
-    where: { companyId },
+    where: { companyId: company.id },
     include: {
       prompts: {
         include: {
@@ -22,7 +36,7 @@ router.get('/:companyId', async (req, res) => {
             where: { runAt: { gte: since } },
             include: {
               companyMentions: {
-                where: { companyId },
+                where: { companyId: company.id },
                 select: { sentiment: true },
               },
             },
@@ -61,7 +75,7 @@ router.get('/:companyId', async (req, res) => {
     })
     .sort((a, b) => b.visibility - a.visibility);
 
-  res.json(payload);
+  return res.json(payload);
 });
 
 export { router as analyticsRouter };

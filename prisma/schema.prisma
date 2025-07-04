@@ -7,12 +7,21 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Company {
-    id        Int      @id @default(autoincrement())
+model Organization {
+    id        String   @id @default(uuid())
     name      String
     domain    String   @unique
     createdAt DateTime @default(now())
+    company   Company? // One-to-one relationship
+}
 
+model Company {
+    id             Int              @id @default(autoincrement())
+    name           String
+    domain         String           @unique
+    createdAt      DateTime         @default(now())
+    organization   Organization?    @relation(fields: [organizationId], references: [id])
+    organizationId String?          @unique
     topics         Topic[]
     mentions       CompanyMention[]
     mentionDetails MentionDetail[]
@@ -20,8 +29,9 @@ model Company {
 
 model Topic {
     id        Int      @id @default(autoincrement())
-    company   Company  @relation(fields: [companyId], references: [id])
-    companyId Int
+    company   Company? @relation(fields: [companyId], references: [id])
+    companyId Int?
+
     name      String
     createdAt DateTime @default(now())
 
