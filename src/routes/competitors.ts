@@ -33,8 +33,10 @@ router.get('/:companyId', async (req, res) => {
           companyId: row.companyId,
           name: company?.name ?? 'Unknown',
           domain: company?.domain ?? '',
-          visibility: totalRuns ? (row._count._all / totalRuns) * 100 : 0,
-          sentiment: row._avg.sentiment ?? 0,
+          visibility: +(
+            totalRuns ? (row._count._all / totalRuns) * 100 : 0
+          ).toFixed(2),
+          sentiment: +(row._avg.sentiment ?? 0).toFixed(2),
           isSelf: row.companyId === seedId,
         };
       })

@@ -16,7 +16,6 @@ export async function seedDatabase() {
             prompts: {
               create: [
                 { text: 'Which is the best app for trading DeFi tokens?' },
-                { text: 'Where can I trade DeFi tokens?' },
                 { text: 'Should I buy DeFi on moonpay?' },
               ],
             },
@@ -26,7 +25,6 @@ export async function seedDatabase() {
             prompts: {
               create: [
                 { text: "What's the best crypto app?" },
-                { text: 'Where can I buy bitcoin with apple pay?' },
                 { text: 'Is moonpay easy to use?' },
               ],
             },

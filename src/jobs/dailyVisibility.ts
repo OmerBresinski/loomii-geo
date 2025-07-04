@@ -8,7 +8,18 @@ const PROVIDERS = [
     key: 'openai:gpt-4o',
     call: async (prompt: string) => {
       const { text } = await generateText({
-        model: openai('gpt-4o-mini'),
+        tools: {
+          web_search_preview: openai.tools.webSearchPreview({
+            searchContextSize: 'high',
+            // userLocation: {
+            //   type: 'approximate',
+            //   city: 'San Francisco',
+            //   region: 'California',
+            // },
+          }),
+        },
+        toolChoice: { type: 'tool', toolName: 'web_search_preview' },
+        model: openai.responses('gpt-4o-mini'),
         prompt,
         maxTokens: 1024,
       });
@@ -46,9 +57,43 @@ async function extractMentions(
   const { object } = await generateObject({
     schema: ExtractionSchema,
     model: openai.chat('gpt-4o-mini'),
-    system:
-      `You will receive a Q&A pair (PROMPT + RESPONSE). Identify **every company/product** mentioned in the RESPONSE. ` +
-      `Return JSON → {companyMentions:[{name,domain,sources:string[]}]} (sources = list of distinct URLs).`,
+    system: `
+    You are an extraction engine.
+
+    INPUT:
+      • PROMPT   – the user's original question to the AI
+      • RESPONSE – the AI's full answer (may include citations, inline links, footnotes, or plain-text references)
+
+    TASK:
+      1. Identify **every company or product** that the RESPONSE discusses in any way
+        (including the user's own company, competitors, partners, etc.).
+      2. For each company return:
+          • name      → canonical brand / company / product name
+          • domain    → primary web domain
+          • sources   → an array of DISTINCT hyperlinks the assistant consulted,
+                        cited, or explicitly referenced while producing the answer.
+                        – Include links that appear inline, inside footnotes,
+                          or inside markdown.
+      3. **Do NOT** add sentiment or visibility numbers here.
+      4. Return **strictly valid JSON** in this exact shape:
+
+        {
+          "companyMentions": [
+            {
+              "name": "...",
+              "domain": "...",
+              "sources": ["https://...", "http://...", ...]
+            },
+            ...
+          ]
+        }
+
+    RULES:
+      • The JSON must parse with no extra keys, comments, or trailing commas.
+      • The sources should be the URLs that were consulted while producing the answer.
+      • Each distinct URL should appear only once in its "sources" array.
+      • Omit the company completely if it is not actually mentioned in the RESPONSE.
+    `,
     prompt: `PROMPT:\n${prompt}\n\nRESPONSE:\n${answer}`,
   });
   return object;
@@ -69,6 +114,41 @@ async function scoreSentiments(
       companies.map(c => `${c.name} | ${c.domain}`).join('\n'),
   });
 
+  return object;
+}
+
+const WebsiteNameSchema = z.object({
+  websiteName: z.string(),
+});
+type WebsiteName = z.infer<typeof WebsiteNameSchema>;
+
+async function extractWebsiteName(url: string): Promise<WebsiteName> {
+  const { object } = await generateObject({
+    schema: WebsiteNameSchema,
+    model: openai.chat('gpt-4o-mini'),
+    system: `
+    You are a website name extraction engine.
+
+    INPUT:
+      • URL – a website URL
+
+    TASK:
+      Extract the human-readable website name from the given URL.
+      Return the proper name/brand of the website, not just the domain.
+      
+      Examples:
+      - "https://techcrunch.com/article" → "TechCrunch"
+      - "https://www.nytimes.com/section" → "The New York Times"
+      - "https://github.com/user/repo" → "GitHub"
+      - "https://stackoverflow.com/questions" → "Stack Overflow"
+
+    RULES:
+      • Return the proper brand/website name, not the domain
+      • Use proper capitalization and spacing
+      • Return JSON in this exact format: {"websiteName": "..."}
+    `,
+    prompt: `URL: ${url}`,
+  });
   return object;
 }
 
@@ -161,11 +241,16 @@ export async function runDailyVisibilityJob() {
             );
 
             for (const url of m.sources) {
+              const websiteNameResult = await extractWebsiteName(url);
+              console.log(
+                `        - Extracted website name: ${websiteNameResult.websiteName} for URL: ${url}`
+              );
+
               const domain = new URL(url).hostname.replace(/^www\./, '');
               const sourceId = (
                 await prisma.source.upsert({
                   where: { domain },
-                  create: { domain, name: domain.split('.')[0] },
+                  create: { domain, name: websiteNameResult.websiteName },
                   update: {},
                 })
               ).id;

@@ -47,10 +47,12 @@ router.get('/:companyId', async (req, res) => {
       return {
         topicId: t.id,
         topicName: t.name,
-        visibility: runCnt ? visSum / runCnt : 0,
-        sentiment: sentiments.length
-          ? sentiments.reduce((a, b) => a + b) / sentiments.length
-          : 0,
+        visibility: +(runCnt ? visSum / runCnt : 0).toFixed(2),
+        sentiment: +(
+          sentiments.length
+            ? sentiments.reduce((a, b) => a + b) / sentiments.length
+            : 0
+        ).toFixed(2),
       };
     })
     .sort((a, b) => b.visibility - a.visibility);

@@ -20,7 +20,7 @@ async function testCompetitorsEndpoint() {
 
     console.log('✅ Test Passed!');
     console.log('Received data:');
-    console.log(JSON.stringify(data, null, 2));
+    console.table(data);
   } catch (error) {
     console.error('❌ Test Failed!');
     console.error(error);
