@@ -84,7 +84,7 @@ model CompanyMention {
 
     mentionDetails MentionDetail[]
 
-    @@unique([promptRunId, companyId])
+    @@unique([promptRunId])
     @@index([companyId])
 }
 
