@@ -45,6 +45,7 @@ router.get('/', async (req, res) => {
     {
       companyId: number;
       companyName: string;
+      companyDomain: string;
       mentions: number;
       sentiments: number[];
     }
@@ -58,6 +59,7 @@ router.get('/', async (req, res) => {
             const existing = competitorData.get(mention.companyId) || {
               companyId: mention.companyId,
               companyName: mention.company.name,
+              companyDomain: mention.company.domain,
               mentions: 0,
               sentiments: [],
             };
@@ -74,6 +76,7 @@ router.get('/', async (req, res) => {
     .map(comp => ({
       companyId: comp.companyId,
       companyName: comp.companyName,
+      companyDomain: comp.companyDomain,
       mentions: comp.mentions,
       averageSentiment:
         comp.sentiments.length > 0
