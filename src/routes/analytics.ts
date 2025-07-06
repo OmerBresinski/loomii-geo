@@ -23,16 +23,29 @@ router.get('/', async (req, res) => {
 
   // Get topic-level metrics using raw SQL for better performance
   const topicMetrics = (await prisma.$queryRaw`
+    WITH prompt_visibility AS (
+      SELECT 
+        p.id as "promptId",
+        p."topicId",
+        CASE 
+          WHEN COUNT(pr.id) > 0 THEN 
+            ROUND((COUNT(DISTINCT CASE WHEN cm."promptRunId" IS NOT NULL AND c.domain = ${company.domain} THEN pr.id END) * 100.0 / COUNT(DISTINCT pr.id))::numeric, 2)::float
+          ELSE 0 
+        END as visibility
+      FROM "Prompt" p
+      LEFT JOIN "PromptRun" pr ON p.id = pr."promptId" 
+        AND pr."runAt" >= ${since}
+      LEFT JOIN "CompanyMention" cm ON pr.id = cm."promptRunId"
+      LEFT JOIN "Company" c ON cm."companyId" = c.id
+      GROUP BY p.id, p."topicId"
+    )
     SELECT 
-      t.id as "topicId",
+      t.id::int as "topicId",
       t.name as "topicName",
-      CASE 
-        WHEN COUNT(pr.id) > 0 THEN 
-          ROUND((COUNT(CASE WHEN c.domain = ${company.domain} THEN cm.id END)::DECIMAL / COUNT(pr.id)) * 100, 2)
-        ELSE 0 
-      END as visibility,
-      COALESCE(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END), 0) as sentiment
+      COALESCE(ROUND(AVG(pv.visibility)::numeric, 2)::float, 0) as visibility,
+      COALESCE(ROUND(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END)::numeric, 2)::float, 0) as sentiment
     FROM "Topic" t
+    LEFT JOIN prompt_visibility pv ON t.id = pv."topicId"
     LEFT JOIN "Prompt" p ON t.id = p."topicId"
     LEFT JOIN "PromptRun" pr ON p.id = pr."promptId" 
       AND pr."runAt" >= ${since}
@@ -48,20 +61,18 @@ router.get('/', async (req, res) => {
     sentiment: number;
   }>;
 
-  console.log({ topicMetrics });
-
   // Get prompt-level metrics for each topic
   const promptMetrics = (await prisma.$queryRaw`
     SELECT 
-      p.id as "promptId",
+      p.id::int as "promptId",
       p.text as "promptText",
-      p."topicId",
+      p."topicId"::int,
       CASE 
-        WHEN COUNT(pr.id) > 0 THEN 
-          ROUND((COUNT(CASE WHEN c.domain = ${company.domain} THEN cm.id END)::DECIMAL / COUNT(pr.id)) * 100, 2)
+        WHEN COUNT(DISTINCT pr.id) > 0 THEN 
+          ROUND((COUNT(DISTINCT CASE WHEN cm."promptRunId" IS NOT NULL AND c.domain = ${company.domain} THEN pr.id END) * 100.0 / COUNT(DISTINCT pr.id))::numeric, 2)::float
         ELSE 0 
       END as visibility,
-      COALESCE(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END), 0) as sentiment
+      COALESCE(ROUND(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END)::numeric, 2)::float, 0) as sentiment
     FROM "Prompt" p
     LEFT JOIN "PromptRun" pr ON p.id = pr."promptId" 
       AND pr."runAt" >= ${since}
@@ -80,25 +91,21 @@ router.get('/', async (req, res) => {
     sentiment: number;
   }>;
 
-  console.log({ promptMetrics });
-
   // Combine the results
   const payload = topicMetrics.map(topic => ({
     topicId: topic.topicId,
     topicName: topic.topicName,
-    visibility: +topic.visibility.toFixed(2),
-    sentiment: +topic.sentiment.toFixed(2),
+    visibility: topic.visibility,
+    sentiment: topic.sentiment,
     prompts: promptMetrics
       .filter(prompt => prompt.topicId === topic.topicId)
       .map(prompt => ({
         promptId: prompt.promptId,
         promptText: prompt.promptText,
-        visibility: +prompt.visibility.toFixed(2),
-        sentiment: +prompt.sentiment.toFixed(2),
+        visibility: prompt.visibility,
+        sentiment: prompt.sentiment,
       })),
   }));
-
-  console.log(JSON.stringify(payload, null, 2));
 
   return res.json(payload);
 });
