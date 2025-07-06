@@ -8,7 +8,7 @@ export async function seedDatabase() {
   const organization = await prisma.organization.create({
     data: {
       name: 'Yael Group',
-      domain: 'https://yaelgroup.com/',
+      domain: 'yaelgroup.com',
       id: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s',
     },
   });
@@ -16,7 +16,7 @@ export async function seedDatabase() {
   const company = await prisma.company.create({
     data: {
       name: 'Yael Group',
-      domain: 'https://yaelgroup.com/',
+      domain: 'yaelgroup.com',
       organizationId: organization.id,
       topics: {
         create: [

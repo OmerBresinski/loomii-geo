@@ -69,7 +69,7 @@ async function extractMentions(
         (including the user's own company, competitors, partners, etc.) - BESIDES if it doesnt make sense, for example: If the user asks about the best Salesforce partner, or best NetSuite partner, then ignore Salesforce and NetSuite.
       2. For each company return:
           • name      → canonical brand / company / product name
-          • domain    → primary web domain of the company
+          • domain    → primary web domain of the company (without http://, https://, or trailing slashes)
       3. **Do NOT** add sentiment or visibility numbers here.
       4. Return **strictly valid JSON** in this exact shape:
 
@@ -85,12 +85,21 @@ async function extractMentions(
 
     RULES:
       • The JSON must parse with no extra keys, comments, or trailing commas.
-      • Company domains should be the primary website of the company.
+      • Company domains should be the primary website of the company, clean format (e.g., "example.com" not "https://example.com/").
       • Omit the company completely if it is not actually mentioned in the RESPONSE.
     `,
     prompt: `PROMPT:\n${prompt}\n\nRESPONSE:\n${answer}`,
   });
-  return object;
+
+  // Clean up domains in the extracted mentions
+  const cleanedMentions = {
+    companyMentions: object.companyMentions.map(mention => ({
+      ...mention,
+      domain: cleanDomain(mention.domain),
+    })),
+  };
+
+  return cleanedMentions;
 }
 
 async function scoreSentiments(
@@ -115,6 +124,13 @@ const WebsiteNameSchema = z.object({
   websiteName: z.string(),
 });
 type WebsiteName = z.infer<typeof WebsiteNameSchema>;
+
+// Helper function to clean up domain names
+function cleanDomain(domain: string): string {
+  return domain
+    .replace(/^https?:\/\//, '') // Remove http:// or https://
+    .replace(/\/$/, ''); // Remove trailing slash
+}
 
 async function extractWebsiteName(url: string): Promise<WebsiteName> {
   const { object } = await generateObject({
@@ -255,7 +271,6 @@ export async function runDailyVisibilityJob() {
               data: {
                 promptRunId: promptRun.id,
                 companyId,
-                visibilityPct: 100, // binary per-run
                 sentiment,
               },
             });

@@ -16,18 +16,18 @@ async function runTest() {
 
   try {
     // 1. Setup: Clear and seed the database
-    console.log('\n[STEP 1] Setting up the database...');
-    await clearDatabase();
-    await seedDatabase();
-    console.log('[STEP 1] Database setup complete.');
+    // console.log('\n[STEP 1] Setting up the database...');
+    // await clearDatabase();
+    // await seedDatabase();
+    // console.log('[STEP 1] Database setup complete.');
 
     // 2. Run: Execute the job
-    console.log('\n[STEP 2] Running the daily visibility job...');
+    console.log('\n[STEP 1] Running the daily visibility job...');
     await runDailyVisibilityJob();
-    console.log('[STEP 2] Job finished.');
+    console.log('[STEP 1] Job finished.');
 
     // 3. Verify: Check the results
-    console.log('\n[STEP 3] Verifying the results...');
+    console.log('\n[STEP 2] Verifying the results...');
     const promptRuns = await prisma.promptRun.findMany({
       include: {
         provider: true,

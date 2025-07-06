@@ -74,17 +74,16 @@ model PromptRun {
 }
 
 model CompanyMention {
-    id            Int       @id @default(autoincrement())
-    promptRun     PromptRun @relation(fields: [promptRunId], references: [id])
-    promptRunId   Int
-    company       Company   @relation(fields: [companyId], references: [id])
-    companyId     Int
-    sentiment     Float // −1 … +1  (per-run)
-    visibilityPct Float // 100 if the company was mentioned in this run
+    id          Int       @id @default(autoincrement())
+    promptRun   PromptRun @relation(fields: [promptRunId], references: [id])
+    promptRunId Int
+    company     Company   @relation(fields: [companyId], references: [id])
+    companyId   Int
+    sentiment   Float // −1 … +1  (per-run)
 
     mentionDetails MentionDetail[]
 
-    @@unique([promptRunId])
+    @@unique([promptRunId, companyId])
     @@index([companyId])
 }
 
