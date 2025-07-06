@@ -41,45 +41,45 @@ router.get('/', async (req, res) => {
         },
       },
     },
-    orderBy: {
-      name: 'asc',
-    },
   });
 
-  const payload = sources.map(source => ({
-    id: source.id,
-    name: source.name,
-    domain: source.domain,
-    urlCount: source.urls.length,
-    urls: source.urls.map(url => {
-      const totalMentions = url.mentionDetails.length;
-      const companyMentions = url.mentionDetails.filter(
-        detail => detail.companyId === userCompany.id
-      ).length;
+  const payload = sources
+    .map(source => ({
+      id: source.id,
+      name: source.name,
+      domain: source.domain,
+      urlCount: source.urls.length,
+      urls: source.urls.map(url => {
+        const totalMentions = url.mentionDetails.length;
+        const companyMentions = url.mentionDetails.filter(
+          detail => detail.companyId === userCompany.id
+        ).length;
 
-      return {
-        id: url.id,
-        url: url.url,
-        totalMentions,
-        companyMentions,
-        mentionPercentage:
-          totalMentions > 0
-            ? ((companyMentions / totalMentions) * 100).toFixed(1)
-            : '0.0',
-      };
-    }),
-    totalMentions: source.urls.reduce(
-      (sum, url) => sum + url.mentionDetails.length,
-      0
-    ),
-    totalCompanyMentions: source.urls.reduce(
-      (sum, url) =>
-        sum +
-        url.mentionDetails.filter(detail => detail.companyId === userCompany.id)
-          .length,
-      0
-    ),
-  }));
+        return {
+          id: url.id,
+          url: url.url,
+          totalMentions,
+          companyMentions,
+          mentionPercentage:
+            totalMentions > 0
+              ? ((companyMentions / totalMentions) * 100).toFixed(1)
+              : '0.0',
+        };
+      }),
+      totalMentions: source.urls.reduce(
+        (sum, url) => sum + url.mentionDetails.length,
+        0
+      ),
+      totalCompanyMentions: source.urls.reduce(
+        (sum, url) =>
+          sum +
+          url.mentionDetails.filter(
+            detail => detail.companyId === userCompany.id
+          ).length,
+        0
+      ),
+    }))
+    .sort((a, b) => b.totalCompanyMentions - a.totalCompanyMentions);
 
   return res.json(payload);
 });

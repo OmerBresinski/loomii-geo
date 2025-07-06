@@ -8,19 +8,21 @@ const PROVIDERS = [
     key: 'openai:gpt-4o',
     call: async (prompt: string) => {
       const { text, sources } = await generateText({
-        tools: {
-          web_search_preview: openai.tools.webSearchPreview({
-            searchContextSize: 'high',
-            userLocation: {
-              type: 'approximate',
-              city: 'Tel Aviv',
-              region: 'Israel',
-            },
-          }),
-        },
-        toolChoice: { type: 'tool', toolName: 'web_search_preview' },
-        model: openai.responses('gpt-4o-mini'),
+        // tools: {
+        //   web_search_preview: openai.tools.webSearchPreview({
+        //     searchContextSize: 'high',
+        //     // userLocation: {
+        //     //   type: 'approximate',
+        //     //   city: 'Tel Aviv',
+        //     //   region: 'Israel',
+        //     // },
+        //   }),
+        // },
+        // toolChoice: { type: 'tool', toolName: 'web_search_preview' },
+        // model: openai.responses('gpt-4o-search-preview-2025-03-11'),
+        model: openai.responses('o4-mini'),
         prompt,
+        temperature: 0.3,
         maxTokens: 1024,
       });
       return { text, sources };
@@ -213,9 +215,18 @@ export async function runDailyVisibilityJob() {
 
           // 2 · score sentiment per company
           console.log('      [3/4] Scoring sentiments...');
+
+          // Remove duplicates based on name and domain combination
+          const uniqueCompanyMentions = ext.companyMentions.filter(
+            (mention, index, arr) =>
+              arr.findIndex(
+                m => m.name === mention.name && m.domain === mention.domain
+              ) === index
+          );
+
           const sent = await scoreSentiments(
             answer,
-            ext.companyMentions.map(({ name, domain }) => ({ name, domain }))
+            uniqueCompanyMentions.map(({ name, domain }) => ({ name, domain }))
           );
           const sentimentMap = new Map(
             sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
@@ -262,10 +273,14 @@ export async function runDailyVisibilityJob() {
             sourceUrlIds.push(sourceUrlId);
           }
 
+          console.log({ uniqueCompanyMentions });
+
           // Then, process each company mention and associate with all sources
-          for (const m of ext.companyMentions) {
+          for (const m of uniqueCompanyMentions) {
             const companyId = await upsertCompany(m.name, m.domain);
             const sentiment = sentimentMap.get(m.domain) ?? 0;
+
+            console.log('Creating mention for', m.name, m.domain);
 
             const companyMention = await prisma.companyMention.create({
               data: {

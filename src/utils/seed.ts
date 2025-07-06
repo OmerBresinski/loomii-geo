@@ -37,9 +37,9 @@ export async function seedDatabase() {
             name: 'NetSuite',
             prompts: {
               create: [
-                { text: 'Who is the best NetSuite partner in Israel?' },
+                { text: 'Who are the leading NetSuite partners in Israel?' },
                 {
-                  text: 'Which company should I choose for my NetSuite implementation?',
+                  text: 'Which company should I choose for my NetSuite implementation in Israel?',
                 },
               ],
             },
