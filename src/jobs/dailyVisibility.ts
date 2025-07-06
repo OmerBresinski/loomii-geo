@@ -188,8 +188,6 @@ export async function runDailyVisibilityJob() {
           console.log('      [1/4] Getting response from AI provider...');
           const { text: answer, sources } = await provider.call(prompt.text);
 
-          console.log({ sources });
-
           // 1 · extract companies + URLs
           console.log('      [2/4] Extracting company mentions...');
           const ext = await extractMentions(prompt.text, answer);
