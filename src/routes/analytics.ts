@@ -31,7 +31,8 @@ router.get('/', async (req, res) => {
           WHEN COUNT(pr.id) > 0 THEN 
             ROUND((COUNT(DISTINCT CASE WHEN cm."promptRunId" IS NOT NULL AND c.domain = ${company.domain} THEN pr.id END) * 100.0 / COUNT(DISTINCT pr.id))::numeric, 2)::float
           ELSE 0 
-        END as visibility
+        END as visibility,
+        COUNT(DISTINCT pr.id)::int as "promptRuns"
       FROM "Prompt" p
       LEFT JOIN "PromptRun" pr ON p.id = pr."promptId" 
         AND pr."runAt" >= ${since}
@@ -42,8 +43,10 @@ router.get('/', async (req, res) => {
     SELECT 
       t.id::int as "topicId",
       t.name as "topicName",
+      t."createdAt" as "topicCreatedAt",
       COALESCE(ROUND(AVG(pv.visibility)::numeric, 2)::float, 0) as visibility,
-      COALESCE(ROUND(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END)::numeric, 2)::float, 0) as sentiment
+      COALESCE(ROUND(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END)::numeric, 2)::float, 0) as sentiment,
+      COALESCE(SUM(pv."promptRuns"), 0)::int as "totalPromptRuns"
     FROM "Topic" t
     LEFT JOIN prompt_visibility pv ON t.id = pv."topicId"
     LEFT JOIN "Prompt" p ON t.id = p."topicId"
@@ -52,13 +55,15 @@ router.get('/', async (req, res) => {
     LEFT JOIN "CompanyMention" cm ON pr.id = cm."promptRunId"
     LEFT JOIN "Company" c ON cm."companyId" = c.id
     WHERE t."companyId" = ${company.id}
-    GROUP BY t.id, t.name
+    GROUP BY t.id, t.name, t."createdAt"
     ORDER BY visibility DESC
   `) as Array<{
     topicId: number;
     topicName: string;
+    topicCreatedAt: Date;
     visibility: number;
     sentiment: number;
+    totalPromptRuns: number;
   }>;
 
   // Get prompt-level metrics for each topic
@@ -67,12 +72,15 @@ router.get('/', async (req, res) => {
       p.id::int as "promptId",
       p.text as "promptText",
       p."topicId"::int,
+      p."createdAt" as "promptCreatedAt",
+      p."isActive" as "promptIsActive",
       CASE 
         WHEN COUNT(DISTINCT pr.id) > 0 THEN 
           ROUND((COUNT(DISTINCT CASE WHEN cm."promptRunId" IS NOT NULL AND c.domain = ${company.domain} THEN pr.id END) * 100.0 / COUNT(DISTINCT pr.id))::numeric, 2)::float
         ELSE 0 
       END as visibility,
-      COALESCE(ROUND(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END)::numeric, 2)::float, 0) as sentiment
+      COALESCE(ROUND(AVG(CASE WHEN c.domain = ${company.domain} THEN cm.sentiment END)::numeric, 2)::float, 0) as sentiment,
+      COUNT(DISTINCT pr.id)::int as "totalPromptRuns"
     FROM "Prompt" p
     LEFT JOIN "PromptRun" pr ON p.id = pr."promptId" 
       AND pr."runAt" >= ${since}
@@ -81,29 +89,37 @@ router.get('/', async (req, res) => {
     WHERE p."topicId" IN (
       SELECT id FROM "Topic" WHERE "companyId" = ${company.id}
     )
-    GROUP BY p.id, p.text, p."topicId"
+    GROUP BY p.id, p.text, p."topicId", p."createdAt", p."isActive"
     ORDER BY p."topicId", visibility DESC
   `) as Array<{
     promptId: number;
     promptText: string;
     topicId: number;
+    promptCreatedAt: Date;
+    promptIsActive: boolean;
     visibility: number;
     sentiment: number;
+    totalPromptRuns: number;
   }>;
 
   // Combine the results
   const payload = topicMetrics.map(topic => ({
     topicId: topic.topicId,
     topicName: topic.topicName,
+    createdAt: topic.topicCreatedAt,
     visibility: topic.visibility,
     sentiment: topic.sentiment,
+    totalPromptRuns: topic.totalPromptRuns,
     prompts: promptMetrics
       .filter(prompt => prompt.topicId === topic.topicId)
       .map(prompt => ({
         promptId: prompt.promptId,
         promptText: prompt.promptText,
+        createdAt: prompt.promptCreatedAt,
+        isActive: prompt.promptIsActive,
         visibility: prompt.visibility,
         sentiment: prompt.sentiment,
+        totalPromptRuns: prompt.totalPromptRuns,
       })),
   }));
 
