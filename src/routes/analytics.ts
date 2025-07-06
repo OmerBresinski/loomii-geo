@@ -66,7 +66,7 @@ router.get('/', async (req, res) => {
     totalPromptRuns: number;
   }>;
 
-  // Get prompt-level metrics for each topic
+  // Get prompt-level metrics for each topic (each prompt's data averaged over time)
   const promptMetrics = (await prisma.$queryRaw`
     SELECT 
       p.id::int as "promptId",
@@ -90,7 +90,7 @@ router.get('/', async (req, res) => {
       SELECT id FROM "Topic" WHERE "companyId" = ${company.id}
     )
     GROUP BY p.id, p.text, p."topicId", p."createdAt", p."isActive"
-    ORDER BY p."topicId", visibility DESC
+    ORDER BY p."topicId", p."createdAt" ASC
   `) as Array<{
     promptId: number;
     promptText: string;

@@ -41,9 +41,6 @@ export async function seedDatabase() {
                 {
                   text: 'Which company should I choose for my NetSuite implementation?',
                 },
-                {
-                  text: 'Is NetSuite worth it?',
-                },
               ],
             },
           },
