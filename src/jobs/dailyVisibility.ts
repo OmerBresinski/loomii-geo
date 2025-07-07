@@ -1,31 +1,54 @@
-import { z } from 'zod';
+import { object, z } from 'zod';
 import { generateText, generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+// import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import { prisma } from '@/utils/database';
+
+const genericSchema = z.object({
+  text: z.string(),
+  sources: z.array(
+    z.object({
+      url: z.string(),
+      title: z.string(),
+    })
+  ),
+});
 
 const PROVIDERS = [
   {
     key: 'openai:gpt-4o',
     call: async (prompt: string) => {
-      const { text, sources } = await generateText({
-        // tools: {
-        //   web_search_preview: openai.tools.webSearchPreview({
-        //     searchContextSize: 'high',
-        //     // userLocation: {
-        //     //   type: 'approximate',
-        //     //   city: 'Tel Aviv',
-        //     //   region: 'Israel',
-        //     // },
-        //   }),
-        // },
-        // toolChoice: { type: 'tool', toolName: 'web_search_preview' },
-        // model: openai.responses('gpt-4o-search-preview-2025-03-11'),
-        model: openai.responses('o4-mini'),
+      const { text, sources, providerMetadata } = await generateText({
+        model: google('gemini-2.5-pro', {
+          useSearchGrounding: true,
+        }),
         prompt,
         temperature: 0.3,
-        maxTokens: 1024,
+        maxTokens: 2048,
       });
-      return { text, sources };
+
+      console.log({ metaData: JSON.stringify(providerMetadata, null, 2) });
+
+      const fullSources = [];
+
+      for (const source of sources) {
+        try {
+          const response = await fetch(source.url, {
+            method: 'HEAD',
+            signal: AbortSignal.timeout(1500), // 5 second timeout
+          });
+          const url = response.url;
+          fullSources.push({ url });
+        } catch (e) {
+          console.log('Link fetch error', source.url);
+          continue;
+        }
+      }
+
+      return {
+        text,
+        sources: fullSources,
+      };
     },
   },
 ] as const;
@@ -57,9 +80,9 @@ async function extractMentions(
 ): Promise<Extraction> {
   const { object } = await generateObject({
     schema: ExtractionSchema,
-    model: openai.chat('gpt-4o-mini'),
+    model: google('gemini-2.5-flash'),
     system: `
-    You are an extraction engine.
+    You are a company name & domain extraction engine.
 
     INPUT:
       • PROMPT   – the user's original question to the AI
@@ -68,7 +91,7 @@ async function extractMentions(
     TASK:
       0. (optional) Translate the RESPONSE to English if it's not already in English.
       1. Identify **every company or product** that the RESPONSE discusses in any way
-        (including the user's own company, competitors, partners, etc.) - BESIDES if it doesnt make sense, for example: If the user asks about the best Salesforce partner, or best NetSuite partner, then ignore Salesforce and NetSuite.
+        (including the user's own company, competitors, partners, etc.) - BESIDES if it doesnt make sense, for example: If the user asks about the best Salesforce partner, then ignore Salesforce.
       2. For each company return:
           • name      → canonical brand / company / product name
           • domain    → primary web domain of the company (without http://, https://, or trailing slashes)
@@ -88,6 +111,7 @@ async function extractMentions(
     RULES:
       • The JSON must parse with no extra keys, comments, or trailing commas.
       • Company domains should be the primary website of the company, clean format (e.g., "example.com" not "https://example.com/").
+      • Company domains should be the primary website of the company, not every source that talks about the company is the company's domain - only include the primary domain.
       • Omit the company completely if it is not actually mentioned in the RESPONSE.
     `,
     prompt: `PROMPT:\n${prompt}\n\nRESPONSE:\n${answer}`,
@@ -110,7 +134,7 @@ async function scoreSentiments(
 ): Promise<Sentiment> {
   const { object } = await generateObject({
     schema: SentimentSchema,
-    model: openai.chat('gpt-4o-mini'),
+    model: google('gemini-2.5-flash'),
     system:
       `Rate the overall sentiment toward each company on a −1 (very negative) to +1 (very positive) scale.\n` +
       `Return JSON {sentiments:[{name,domain,sentiment}]}.`,
@@ -137,7 +161,7 @@ function cleanDomain(domain: string): string {
 async function extractWebsiteName(url: string): Promise<WebsiteName> {
   const { object } = await generateObject({
     schema: WebsiteNameSchema,
-    model: openai.chat('gpt-4o-mini'),
+    model: google('gemini-2.5-flash'),
     system: `
     You are a website name extraction engine.
 
@@ -206,6 +230,8 @@ export async function runDailyVisibilityJob() {
           console.log('      [1/4] Getting response from AI provider...');
           const { text: answer, sources } = await provider.call(prompt.text);
 
+          console.log({ sources });
+
           // 1 · extract companies + URLs
           console.log('      [2/4] Extracting company mentions...');
           const ext = await extractMentions(prompt.text, answer);
@@ -251,6 +277,8 @@ export async function runDailyVisibilityJob() {
           const sourceUrlIds: number[] = [];
           for (const source of sources) {
             const url = source.url;
+            if (!url) continue;
+
             const websiteNameResult = await extractWebsiteName(url);
 
             const domain = new URL(url).hostname.replace(/^www\./, '');
@@ -273,7 +301,19 @@ export async function runDailyVisibilityJob() {
             sourceUrlIds.push(sourceUrlId);
           }
 
-          console.log({ uniqueCompanyMentions });
+          const sourcesOfCompany = [];
+          for (const source of sources) {
+            const sourcePage = await fetch(source.url);
+            const sourcePageText = await sourcePage.text();
+
+            console.log({ sourcePageText });
+
+            if (
+              sourcePageText.toLowerCase().includes(company.name.toLowerCase())
+            ) {
+              sourcesOfCompany.push(source.url);
+            }
+          }
 
           // Then, process each company mention and associate with all sources
           for (const m of uniqueCompanyMentions) {
@@ -282,8 +322,17 @@ export async function runDailyVisibilityJob() {
 
             console.log('Creating mention for', m.name, m.domain);
 
-            const companyMention = await prisma.companyMention.create({
-              data: {
+            const companyMention = await prisma.companyMention.upsert({
+              where: {
+                promptRunId_companyId: {
+                  promptRunId: promptRun.id,
+                  companyId,
+                },
+              },
+              update: {
+                sentiment, // Update sentiment if it already exists
+              },
+              create: {
                 promptRunId: promptRun.id,
                 companyId,
                 sentiment,
@@ -294,23 +343,29 @@ export async function runDailyVisibilityJob() {
             );
 
             // Associate this company mention with all sources from this prompt run
-            for (const sourceUrlId of sourceUrlIds) {
-              await prisma.mentionDetail.create({
-                data: {
-                  promptRunId: promptRun.id,
-                  companyId,
-                  sourceUrlId,
-                  count: 1, // presence flag
-                },
+
+            for (const source of sourcesOfCompany) {
+              const sourceUrl = await prisma.sourceUrl.findUnique({
+                where: { url: source },
               });
+              if (sourceUrl) {
+                await prisma.mentionDetail.create({
+                  data: {
+                    promptRunId: promptRun.id,
+                    companyId,
+                    sourceUrlId: sourceUrl.id,
+                    count: 1, // presence flag
+                  },
+                });
+              }
             }
+            console.log(
+              `      Finished persisting data for prompt: "${prompt.text}"`
+            );
           }
-          console.log(
-            `      Finished persisting data for prompt: "${prompt.text}"`
-          );
         }
       }
     }
+    console.log('\n✅ Daily visibility job finished successfully!');
   }
-  console.log('\n✅ Daily visibility job finished successfully!');
 }

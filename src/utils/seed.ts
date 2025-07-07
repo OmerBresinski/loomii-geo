@@ -7,40 +7,27 @@ export async function seedDatabase() {
 
   const organization = await prisma.organization.create({
     data: {
-      name: 'Yael Group',
-      domain: 'yaelgroup.com',
+      name: 'MoonPay',
+      domain: 'moonpay.com',
       id: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s',
     },
   });
 
   const company = await prisma.company.create({
     data: {
-      name: 'Yael Group',
-      domain: 'yaelgroup.com',
+      name: 'MoonPay',
+      domain: 'moonpay.com',
       organizationId: organization.id,
       topics: {
         create: [
           {
-            name: 'Salesforce',
+            name: 'Payment Processing',
             prompts: {
               create: [
                 {
-                  text: 'Who is the best Salesforce partner in Israel?',
+                  text: 'Which are the latest crypto companies that are authorized with the New York Bitlicense? ',
                 },
-                {
-                  text: 'Which company should I choose for my Salesforce implementation?',
-                },
-              ],
-            },
-          },
-          {
-            name: 'NetSuite',
-            prompts: {
-              create: [
-                { text: 'Who are the leading NetSuite partners in Israel?' },
-                {
-                  text: 'Which company should I choose for my NetSuite implementation in Israel?',
-                },
+                { text: 'What are the top 3 crypto apps?' },
               ],
             },
           },
