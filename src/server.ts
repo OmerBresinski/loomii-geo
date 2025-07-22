@@ -1,3 +1,4 @@
+import 'module-alias/register';
 import app from './app';
 import { connectDatabase, disconnectDatabase } from './utils/database';
 import { logger } from './utils/logger';
