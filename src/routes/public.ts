@@ -15,11 +15,10 @@ router.get('/info', (req, res) => {
   };
 
   // If user is authenticated, include their info
-  if (req.auth) {
+  if (req.auth?.organization) {
     response.authenticatedUser = {
-      userId: req.auth.userId,
-      email: req.auth.user?.email,
-      name: `${req.auth.user?.firstName} ${req.auth.user?.lastName}`.trim(),
+      organizationId: req.auth.organization.id,
+      organizationName: 'MoonPay',
     };
   } else {
     response.message += ' (not authenticated)';

@@ -19,9 +19,7 @@ router.get('/profile', (req, res) => {
   return res.json({
     success: true,
     data: {
-      userId: req.auth.userId,
-      user: req.auth.user,
-      sessionId: req.auth.sessionId,
+      organization: req.auth.organization,
     },
   });
 });

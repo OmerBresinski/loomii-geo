@@ -9,7 +9,6 @@ import dotenv from 'dotenv';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
-import { initClerkMiddleware } from './middleware/auth';
 
 // Load environment variables
 dotenv.config();
@@ -37,8 +36,6 @@ app.use(
   })
 );
 
-// Initialize Clerk middleware
-app.use(initClerkMiddleware);
 
 // Rate limiting
 const limiter = rateLimit({
