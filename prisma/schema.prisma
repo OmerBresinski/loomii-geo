@@ -22,33 +22,39 @@ model Company {
     createdAt      DateTime         @default(now())
     organization   Organization?    @relation(fields: [organizationId], references: [id])
     organizationId String?          @unique
-    topics         Topic[]
+    prompts        Prompt[]
     mentions       CompanyMention[]
     mentionDetails MentionDetail[]
 }
 
-model Topic {
-    id        Int      @id @default(autoincrement())
-    company   Company? @relation(fields: [companyId], references: [id])
-    companyId Int?
+model Tag {
+    id      Int    @id @default(autoincrement())
+    label   String @unique
+    color   String
 
-    name      String
-    createdAt DateTime @default(now())
-
-    prompts Prompt[]
-
-    @@unique([companyId, name])
+    promptTags PromptTag[]
 }
 
 model Prompt {
     id        Int      @id @default(autoincrement())
-    topic     Topic    @relation(fields: [topicId], references: [id])
-    topicId   Int
+    company   Company  @relation(fields: [companyId], references: [id])
+    companyId Int
     text      String
     isActive  Boolean  @default(true)
     createdAt DateTime @default(now())
 
     promptRuns PromptRun[]
+    promptTags PromptTag[]
+}
+
+model PromptTag {
+    id       Int    @id @default(autoincrement())
+    prompt   Prompt @relation(fields: [promptId], references: [id])
+    promptId Int
+    tag      Tag    @relation(fields: [tagId], references: [id])
+    tagId    Int
+
+    @@unique([promptId, tagId])
 }
 
 model AIProvider {

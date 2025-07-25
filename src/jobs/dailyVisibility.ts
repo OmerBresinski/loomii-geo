@@ -213,159 +213,163 @@ export async function runDailyVisibilityJob() {
   console.log('🚀 Starting daily visibility job...');
   const companies = await prisma.company.findMany({
     include: {
-      topics: { include: { prompts: { where: { isActive: true } } } },
+      prompts: { 
+        where: { isActive: true }, 
+        include: { 
+          promptTags: { 
+            include: { tag: true } 
+          } 
+        } 
+      },
     },
   });
   console.log(`Found ${companies.length} companies to process.`);
 
   for (const company of companies) {
     console.log(`\n🏢 Processing company: ${company.name}`);
-    for (const topic of company.topics) {
-      console.log(`  📚 Processing topic: ${topic.name}`);
-      for (const prompt of topic.prompts) {
-        console.log(`    💬 Processing prompt: "${prompt.text}"`);
-        for (const provider of PROVIDERS) {
-          console.log(`      🤖 Using provider: ${provider.key}`);
-          // 0 · get the model's answer
-          console.log('      [1/4] Getting response from AI provider...');
-          const { text: answer, sources } = await provider.call(prompt.text);
+    for (const prompt of company.prompts) {
+      const tagLabels = prompt.promptTags.map(pt => pt.tag.label).join(', ');
+      console.log(`  🏷️  Processing prompt (${tagLabels}): "${prompt.text}"`);
+      for (const provider of PROVIDERS) {
+        console.log(`    🤖 Using provider: ${provider.key}`);
+        // 0 · get the model's answer
+        console.log('        [1/4] Getting response from AI provider...');
+        const { text: answer, sources } = await provider.call(prompt.text);
 
-          console.log({ sources });
+        console.log({ sources });
 
-          // 1 · extract companies + URLs
-          console.log('      [2/4] Extracting company mentions...');
-          const ext = await extractMentions(prompt.text, answer);
-          console.log(
-            `      Found ${ext.companyMentions.length} company mentions and ${sources.length} sources.`
-          );
+        // 1 · extract companies + URLs
+        console.log('        [2/4] Extracting company mentions...');
+        const ext = await extractMentions(prompt.text, answer);
+        console.log(
+          `        Found ${ext.companyMentions.length} company mentions and ${sources.length} sources.`
+        );
 
-          // 2 · score sentiment per company
-          console.log('      [3/4] Scoring sentiments...');
+        // 2 · score sentiment per company
+        console.log('        [3/4] Scoring sentiments...');
 
-          // Remove duplicates based on name and domain combination
-          const uniqueCompanyMentions = ext.companyMentions.filter(
-            (mention, index, arr) =>
-              arr.findIndex(
-                m => m.name === mention.name && m.domain === mention.domain
-              ) === index
-          );
+        // Remove duplicates based on name and domain combination
+        const uniqueCompanyMentions = ext.companyMentions.filter(
+          (mention, index, arr) =>
+            arr.findIndex(
+              m => m.name === mention.name && m.domain === mention.domain
+            ) === index
+        );
 
-          const sent = await scoreSentiments(
-            answer,
-            uniqueCompanyMentions.map(({ name, domain }) => ({ name, domain }))
-          );
-          const sentimentMap = new Map(
-            sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
-          );
-          console.log(`      Scored ${sent.sentiments.length} sentiments.`);
+        const sent = await scoreSentiments(
+          answer,
+          uniqueCompanyMentions.map(({ name, domain }) => ({ name, domain }))
+        );
+        const sentimentMap = new Map(
+          sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
+        );
+        console.log(`        Scored ${sent.sentiments.length} sentiments.`);
 
-          // 3 · persist PromptRun
-          console.log('      [4/4] Persisting data to database...');
-          const promptRun = await prisma.promptRun.create({
-            data: {
-              promptId: prompt.id,
-              providerId: await upsertProvider(provider.key),
-              responseRaw: answer,
-            },
-          });
-          console.log(`      Created PromptRun (ID: ${promptRun.id})`);
+        // 3 · persist PromptRun
+        console.log('        [4/4] Persisting data to database...');
+        const promptRun = await prisma.promptRun.create({
+          data: {
+            promptId: prompt.id,
+            providerId: await upsertProvider(provider.key),
+            responseRaw: answer,
+          },
+        });
+        console.log(`        Created PromptRun (ID: ${promptRun.id})`);
 
-          // 4 · persist mentions + sources
-          console.log(`      Processing ${sources.length} sources...`);
+        // 4 · persist mentions + sources
+        console.log(`        Processing ${sources.length} sources...`);
 
-          // First, process all sources and create SourceUrl records
-          const sourceUrlIds: number[] = [];
-          for (const source of sources) {
-            const url = source.url;
-            if (!url) continue;
+        // First, process all sources and create SourceUrl records
+        const sourceUrlIds: number[] = [];
+        for (const source of sources) {
+          const url = source.url;
+          if (!url) continue;
 
-            const websiteNameResult = await extractWebsiteName(url);
+          const websiteNameResult = await extractWebsiteName(url);
 
-            const domain = new URL(url).hostname.replace(/^www\./, '');
-            const sourceId = (
-              await prisma.source.upsert({
-                where: { domain },
-                create: { domain, name: websiteNameResult.websiteName },
-                update: {},
-              })
-            ).id;
+          const domain = new URL(url).hostname.replace(/^www\./, '');
+          const sourceId = (
+            await prisma.source.upsert({
+              where: { domain },
+              create: { domain, name: websiteNameResult.websiteName },
+              update: {},
+            })
+          ).id;
 
-            const sourceUrlId = (
-              await prisma.sourceUrl.upsert({
-                where: { url },
-                create: { url, sourceId },
-                update: {},
-              })
-            ).id;
+          const sourceUrlId = (
+            await prisma.sourceUrl.upsert({
+              where: { url },
+              create: { url, sourceId },
+              update: {},
+            })
+          ).id;
 
-            sourceUrlIds.push(sourceUrlId);
-          }
+          sourceUrlIds.push(sourceUrlId);
+        }
 
-          const sourcesOfCompany = [];
-          for (const source of sources) {
-            const sourcePage = await fetch(source.url);
-            const sourcePageText = await sourcePage.text();
+        const sourcesOfCompany = [];
+        for (const source of sources) {
+          const sourcePage = await fetch(source.url);
+          const sourcePageText = await sourcePage.text();
 
-            console.log({ sourcePageText });
+          console.log({ sourcePageText });
 
-            if (
-              sourcePageText.toLowerCase().includes(company.name.toLowerCase())
-            ) {
-              sourcesOfCompany.push(source.url);
-            }
-          }
-
-          // Then, process each company mention and associate with all sources
-          for (const m of uniqueCompanyMentions) {
-            const companyId = await upsertCompany(m.name, m.domain);
-            const sentiment = sentimentMap.get(m.domain) ?? 0;
-
-            console.log('Creating mention for', m.name, m.domain);
-
-            const companyMention = await prisma.companyMention.upsert({
-              where: {
-                promptRunId_companyId: {
-                  promptRunId: promptRun.id,
-                  companyId,
-                },
-              },
-              update: {
-                sentiment, // Update sentiment if it already exists
-              },
-              create: {
-                promptRunId: promptRun.id,
-                companyId,
-                sentiment,
-              },
-            });
-            console.log(
-              `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
-            );
-
-            // Associate this company mention with all sources from this prompt run
-
-            for (const source of sourcesOfCompany) {
-              const sourceUrl = await prisma.sourceUrl.findUnique({
-                where: { url: source },
-              });
-              if (sourceUrl) {
-                await prisma.mentionDetail.create({
-                  data: {
-                    promptRunId: promptRun.id,
-                    companyId,
-                    sourceUrlId: sourceUrl.id,
-                    count: 1, // presence flag
-                  },
-                });
-              }
-            }
-            console.log(
-              `      Finished persisting data for prompt: "${prompt.text}"`
-            );
+          if (
+            sourcePageText.toLowerCase().includes(company.name.toLowerCase())
+          ) {
+            sourcesOfCompany.push(source.url);
           }
         }
+
+        // Then, process each company mention and associate with all sources
+        for (const m of uniqueCompanyMentions) {
+          const companyId = await upsertCompany(m.name, m.domain);
+          const sentiment = sentimentMap.get(m.domain) ?? 0;
+
+          console.log('Creating mention for', m.name, m.domain);
+
+          const companyMention = await prisma.companyMention.upsert({
+            where: {
+              promptRunId_companyId: {
+                promptRunId: promptRun.id,
+                companyId,
+              },
+            },
+            update: {
+              sentiment, // Update sentiment if it already exists
+            },
+            create: {
+              promptRunId: promptRun.id,
+              companyId,
+              sentiment,
+            },
+          });
+          console.log(
+            `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
+          );
+
+          // Associate this company mention with all sources from this prompt run
+          for (const source of sourcesOfCompany) {
+            const sourceUrl = await prisma.sourceUrl.findUnique({
+              where: { url: source },
+            });
+            if (sourceUrl) {
+              await prisma.mentionDetail.create({
+                data: {
+                  promptRunId: promptRun.id,
+                  companyId,
+                  sourceUrlId: sourceUrl.id,
+                  count: 1, // presence flag
+                },
+              });
+            }
+          }
+        }
+        console.log(
+          `        Finished persisting data for prompt: "${prompt.text}"`
+        );
       }
     }
-    console.log('\n✅ Daily visibility job finished successfully!');
   }
+  console.log('\n✅ Daily visibility job finished successfully!');
 }

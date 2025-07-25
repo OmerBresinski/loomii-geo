@@ -13,21 +13,17 @@ router.get('/', async (req, res) => {
   const company = await prisma.company.findUnique({
     where: { organizationId },
     include: {
-      topics: {
+      prompts: {
         include: {
-          prompts: {
+          promptRuns: {
+            where: {
+              runAt: {
+                gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
+              },
+            },
             include: {
-              promptRuns: {
-                where: {
-                  runAt: {
-                    gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
-                  },
-                },
-                include: {
-                  companyMentions: {
-                    include: { company: true },
-                  },
-                },
+              companyMentions: {
+                include: { company: true },
               },
             },
           },
@@ -51,23 +47,21 @@ router.get('/', async (req, res) => {
     }
   >();
 
-  company.topics.forEach(topic => {
-    topic.prompts.forEach(prompt => {
-      prompt.promptRuns.forEach(run => {
-        run.companyMentions.forEach(mention => {
-          if (mention.companyId !== company.id) {
-            const existing = competitorData.get(mention.companyId) || {
-              companyId: mention.companyId,
-              companyName: mention.company.name,
-              companyDomain: mention.company.domain,
-              mentions: 0,
-              sentiments: [],
-            };
-            existing.mentions += 1;
-            existing.sentiments.push(mention.sentiment);
-            competitorData.set(mention.companyId, existing);
-          }
-        });
+  company.prompts.forEach(prompt => {
+    prompt.promptRuns.forEach(run => {
+      run.companyMentions.forEach(mention => {
+        if (mention.companyId !== company.id) {
+          const existing = competitorData.get(mention.companyId) || {
+            companyId: mention.companyId,
+            companyName: mention.company.name,
+            companyDomain: mention.company.domain,
+            mentions: 0,
+            sentiments: [],
+          };
+          existing.mentions += 1;
+          existing.sentiments.push(mention.sentiment);
+          competitorData.set(mention.companyId, existing);
+        }
       });
     });
   });
@@ -97,21 +91,17 @@ router.get('/history', async (req, res) => {
   const company = await prisma.company.findUnique({
     where: { organizationId },
     include: {
-      topics: {
+      prompts: {
         include: {
-          prompts: {
+          promptRuns: {
+            where: {
+              runAt: {
+                gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
+              },
+            },
             include: {
-              promptRuns: {
-                where: {
-                  runAt: {
-                    gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
-                  },
-                },
-                include: {
-                  companyMentions: {
-                    include: { company: true },
-                  },
-                },
+              companyMentions: {
+                include: { company: true },
               },
             },
           },
@@ -140,39 +130,37 @@ router.get('/history', async (req, res) => {
     }
   >();
 
-  company.topics.forEach(topic => {
-    topic.prompts.forEach(prompt => {
-      prompt.promptRuns.forEach(run => {
-        const dateKey = run.runAt.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+  company.prompts.forEach(prompt => {
+    prompt.promptRuns.forEach(run => {
+      const dateKey = run.runAt.toISOString().slice(0, 13); // YYYY-MM-DDTHH
 
-        if (!dailyData.has(dateKey)) {
-          dailyData.set(dateKey, {
-            date: dateKey,
-            totalRuns: 0,
-            competitors: new Map(),
-          });
-        }
-
-        const dayData = dailyData.get(dateKey)!;
-        dayData.totalRuns += 1;
-
-        // Track which companies were mentioned in this run (to avoid double-counting)
-        const companiesMentionedInRun = new Set<number>();
-        run.companyMentions.forEach(mention => {
-          companiesMentionedInRun.add(mention.companyId);
+      if (!dailyData.has(dateKey)) {
+        dailyData.set(dateKey, {
+          date: dateKey,
+          totalRuns: 0,
+          competitors: new Map(),
         });
+      }
 
-        // Increment mention count once per company per run
-        companiesMentionedInRun.forEach(companyId => {
-          const mention = run.companyMentions.find(m => m.companyId === companyId)!;
-          const existing = dayData.competitors.get(companyId) || {
-            companyId: companyId,
-            company: mention.company,
-            mentions: 0,
-          };
-          existing.mentions += 1;
-          dayData.competitors.set(companyId, existing);
-        });
+      const dayData = dailyData.get(dateKey)!;
+      dayData.totalRuns += 1;
+
+      // Track which companies were mentioned in this run (to avoid double-counting)
+      const companiesMentionedInRun = new Set<number>();
+      run.companyMentions.forEach(mention => {
+        companiesMentionedInRun.add(mention.companyId);
+      });
+
+      // Increment mention count once per company per run
+      companiesMentionedInRun.forEach(companyId => {
+        const mention = run.companyMentions.find(m => m.companyId === companyId)!;
+        const existing = dayData.competitors.get(companyId) || {
+          companyId: companyId,
+          company: mention.company,
+          mentions: 0,
+        };
+        existing.mentions += 1;
+        dayData.competitors.set(companyId, existing);
       });
     });
   });
