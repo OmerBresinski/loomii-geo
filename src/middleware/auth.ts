@@ -19,7 +19,7 @@ export const requireAuth = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  // Hardcode the organization ID for MoonPay
+  // Hardcode the organization ID for Binance
   req.auth = {
     organization: {
       id: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s',

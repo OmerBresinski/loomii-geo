@@ -1,12 +1,12 @@
 export {};
 
 const API_BASE_URL = 'http://localhost:3000/api'; // Adjust if your server runs on a different port
-const MOONPAY_COMPANY_ID = 1; // Assuming Moonpay is companyId 1
+const BINANCE_COMPANY_ID = 1; // Assuming Binance is companyId 1
 
 async function testSourcesEndpoint() {
   console.log('--- Testing GET /sources endpoint ---');
 
-  const url = `${API_BASE_URL}/sources/${MOONPAY_COMPANY_ID}?days=30`;
+  const url = `${API_BASE_URL}/sources/${BINANCE_COMPANY_ID}?days=30`;
 
   try {
     console.log(`Fetching from: ${url}`);

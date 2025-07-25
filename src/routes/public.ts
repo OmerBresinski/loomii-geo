@@ -18,7 +18,7 @@ router.get('/info', (req, res) => {
   if (req.auth?.organization) {
     response.authenticatedUser = {
       organizationId: req.auth.organization.id,
-      organizationName: 'MoonPay',
+      organizationName: 'Binance',
     };
   } else {
     response.message += ' (not authenticated)';

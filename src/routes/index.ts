@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { analyticsRouter } from './analytics';
+import { promptsRouter } from './prompts';
 import { competitorsRouter } from './competitors';
 import { sourcesRouter } from './sources';
 import { healthRouter } from './health';
@@ -13,7 +13,7 @@ router.use('/health', healthRouter);
 router.use('/public', publicRouter);
 
 // Protected routes (authentication required)
-router.use('/analytics', analyticsRouter);
+router.use('/prompts', promptsRouter);
 router.use('/competitors', competitorsRouter);
 router.use('/sources', sourcesRouter);
 router.use('/user', userRouter);

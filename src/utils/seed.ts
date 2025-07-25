@@ -11,16 +11,16 @@ export async function seedDatabase() {
 
   const organization = await prisma.organization.create({
     data: {
-      name: 'MoonPay',
-      domain: 'moonpay.com',
+      name: 'Binance',
+      domain: 'binance.com',
       id: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s',
     },
   });
 
   const company = await prisma.company.create({
     data: {
-      name: 'MoonPay',
-      domain: 'moonpay.com',
+      name: 'Binance',
+      domain: 'binance.com',
       organizationId: organization.id,
     },
   });
@@ -36,7 +36,7 @@ export async function seedDatabase() {
       tags: ['competitive'],
     },
     {
-      text: 'What are top crypto payment platforms 2024?',
+      text: 'What are top crypto payment platforms 2025?',
       tags: ['competitive', 'market share'],
     },
     {
@@ -68,48 +68,8 @@ export async function seedDatabase() {
       tags: ['market share', 'competitive'],
     },
     {
-      text: 'How do crypto-fiat conversion rates vary?',
+      text: 'How do crypto-fiat conversion rates vary between crypto exchanges?',
       tags: ['pricing', 'features'],
-    },
-    {
-      text: 'What KYC requirements do crypto exchanges have?',
-      tags: ['features'],
-    },
-    {
-      text: 'Which exchanges are expanding into new markets?',
-      tags: ['competitive', 'market share'],
-    },
-    {
-      text: 'What are withdrawal limits across major platforms?',
-      tags: ['features', 'pricing'],
-    },
-    {
-      text: 'How satisfied are enterprises with crypto solutions?',
-      tags: ['reviews', 'features'],
-    },
-    {
-      text: 'Which platforms have highest mobile crypto usage?',
-      tags: ['market share', 'features'],
-    },
-    {
-      text: 'How do crypto exchange onboarding processes compare?',
-      tags: ['features', 'reviews'],
-    },
-    {
-      text: 'Which exchanges offer best staking rewards?',
-      tags: ['pricing', 'competitive', 'features'],
-    },
-    {
-      text: 'What complaints do users have about exchanges?',
-      tags: ['reviews', 'features'],
-    },
-    {
-      text: 'How do crypto payment processor APIs compare?',
-      tags: ['competitive', 'features'],
-    },
-    {
-      text: 'Which providers have highest merchant adoption rates?',
-      tags: ['market share'],
     },
   ];
 

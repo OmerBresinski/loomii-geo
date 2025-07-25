@@ -16,7 +16,7 @@ const genericSchema = z.object({
 
 const PROVIDERS = [
   {
-    key: 'openai:gpt-4o',
+    key: 'gemini-2.5-pro',
     call: async (prompt: string) => {
       const { text, sources, providerMetadata } = await generateText({
         model: google('gemini-2.5-pro', {
@@ -213,13 +213,13 @@ export async function runDailyVisibilityJob() {
   console.log('🚀 Starting daily visibility job...');
   const companies = await prisma.company.findMany({
     include: {
-      prompts: { 
-        where: { isActive: true }, 
-        include: { 
-          promptTags: { 
-            include: { tag: true } 
-          } 
-        } 
+      prompts: {
+        where: { isActive: true },
+        include: {
+          promptTags: {
+            include: { tag: true },
+          },
+        },
       },
     },
   });
