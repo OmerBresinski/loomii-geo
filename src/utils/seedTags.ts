@@ -1,11 +1,11 @@
 import { prisma } from './database';
 
 const TAGS = [
-  { label: 'competitive', color: '#FFB3BA' },    // Light pink
-  { label: 'pricing', color: '#BAFFC9' },        // Light green
-  { label: 'features', color: '#BAE1FF' },       // Light blue
-  { label: 'reviews', color: '#FFFFBA' },        // Light yellow
-  { label: 'market share', color: '#E1BAFF' },   // Light purple
+  { label: 'competitive', color: '#CEFAFE' },    // Light cyan
+  { label: 'pricing', color: '#FFE4E6' },        // Light pink
+  { label: 'features', color: '#DCFCE7' },       // Light green
+  { label: 'reviews', color: '#F3E8FF' },        // Light purple
+  { label: 'market share', color: '#FEF3C7' },   // Light yellow
 ];
 
 export async function seedTags() {

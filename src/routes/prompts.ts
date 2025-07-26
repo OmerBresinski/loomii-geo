@@ -72,7 +72,7 @@ router.get('/', async (req, res) => {
 
     prompt.promptRuns.forEach(run => {
       run.companyMentions.forEach(mention => {
-        if (mention.companyId !== company.id) { // Exclude the organization's own company
+        if (mention.company.domain !== company.domain) { // Exclude the organization's own company
           const existing = competitorVisibility.get(mention.companyId) || {
             companyId: mention.companyId,
             domain: mention.company.domain,
@@ -86,10 +86,10 @@ router.get('/', async (req, res) => {
       });
     });
 
-    // Get top 3 competitors by visibility
+    // Get top 5 competitors by visibility (excluding the logged-in company)
     const topCompetitors = Array.from(competitorVisibility.values())
       .sort((a, b) => b.visibility - a.visibility)
-      .slice(0, 3)
+      .slice(0, 5)
       .map(comp => comp.domain);
 
     // Format tags
