@@ -24,7 +24,8 @@
     "test:competitors": "tsx src/tests/testCompetitors.ts",
     "test:sources": "tsx src/tests/testSources.ts",
     "test:api": "npm run test:analytics && npm run test:competitors && npm run test:sources",
-    "seed:tags": "tsx src/utils/seedTags.ts"
+    "seed:tags": "tsx src/utils/seedTags.ts",
+    "migrate:dates": "tsx src/utils/migratePromptRunDates.ts"
   },
   "keywords": [
     "express",
