@@ -7,12 +7,25 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
+model User {
+    id             String       @id @default(uuid())
+    email          String       @unique
+    password       String
+    firstName      String?
+    lastName       String?
+    createdAt      DateTime     @default(now())
+    updatedAt      DateTime     @updatedAt
+    organization   Organization @relation(fields: [organizationId], references: [id])
+    organizationId String
+}
+
 model Organization {
     id        String   @id @default(uuid())
     name      String
     domain    String   @unique
     createdAt DateTime @default(now())
     company   Company? // One-to-one relationship
+    users     User[]
 }
 
 model Company {

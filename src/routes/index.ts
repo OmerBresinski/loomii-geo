@@ -5,12 +5,14 @@ import { sourcesRouter } from './sources';
 import { healthRouter } from './health';
 import { userRouter } from './user';
 import { publicRouter } from './public';
+import authRouter from './auth';
 
 const router = Router();
 
 // Public routes (no authentication required)
 router.use('/health', healthRouter);
 router.use('/public', publicRouter);
+router.use('/auth', authRouter);
 
 // Protected routes (authentication required)
 router.use('/prompts', promptsRouter);
