@@ -55,13 +55,46 @@ router.get('/', async (req, res) => {
   const promptData = prompts.map(prompt => {
     const totalRuns = prompt.promptRuns.length;
 
-    // Calculate visibility for the organization's company
+    // Calculate current visibility for the organization's company
     const organizationMentions = prompt.promptRuns.filter(run =>
       run.companyMentions.some(mention => mention.companyId === company.id)
     ).length;
 
     const visibility =
       totalRuns > 0 ? (organizationMentions / totalRuns) * 100 : 0;
+
+    // Calculate trend by comparing cumulative averages
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    let trendPercentage = 0;
+
+    if (totalRuns >= 2) {
+      // Sort runs by date (newest first) 
+      const sortedRuns = [...prompt.promptRuns].sort((a, b) => b.runAt.getTime() - a.runAt.getTime());
+      
+      // Cumulative visibility up to and including latest run (all runs)
+      const allRuns = sortedRuns.length;
+      const allMentions = sortedRuns.filter(run =>
+        run.companyMentions.some(mention => mention.companyId === company.id)
+      ).length;
+      const latestCumulativeVisibility = allRuns > 0 ? (allMentions / allRuns) * 100 : 0;
+
+      // Cumulative visibility up to (but excluding) latest run
+      const runsExcludingLatest = sortedRuns.slice(1); // Remove the first (latest) run
+      const mentionsExcludingLatest = runsExcludingLatest.filter(run =>
+        run.companyMentions.some(mention => mention.companyId === company.id)
+      ).length;
+      const previousCumulativeVisibility = runsExcludingLatest.length > 0 ? 
+        (mentionsExcludingLatest / runsExcludingLatest.length) * 100 : 0;
+
+      // Calculate trend
+      const visibilityDifference = latestCumulativeVisibility - previousCumulativeVisibility;
+      
+      if (Math.abs(visibilityDifference) >= 1) { // 1% threshold
+        trend = visibilityDifference > 0 ? 'up' : 'down';
+      }
+      
+      trendPercentage = Math.abs(Math.round(visibilityDifference * 100) / 100);
+    }
 
     // Calculate competitor visibility
     const competitorVisibility = new Map<
@@ -96,7 +129,10 @@ router.get('/', async (req, res) => {
     const topCompetitors = Array.from(competitorVisibility.values())
       .sort((a, b) => b.visibility - a.visibility)
       .slice(0, 5)
-      .map(comp => comp.domain);
+      .map(comp => ({
+        name: comp.domain.split('.')[0], // Extract name from domain (e.g., "coinbase" from "coinbase.com")
+        domain: comp.domain
+      }));
 
     // Format tags
     const tags = prompt.promptTags.map(pt => ({
@@ -109,7 +145,9 @@ router.get('/', async (req, res) => {
       promptId: prompt.id,
       text: prompt.text,
       visibility: Math.round(visibility * 100) / 100, // Round to 2 decimal places
-      topCompetitorDomains: topCompetitors,
+      trend,
+      trendPercentage,
+      topCompetitors,
       tags,
       createdAt: prompt.createdAt,
       isActive: prompt.isActive,
