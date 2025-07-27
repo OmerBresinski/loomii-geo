@@ -13,31 +13,31 @@ const registerSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   organizationName: z.string().min(1),
-  organizationDomain: z.string().min(1)
+  organizationDomain: z.string().min(1),
 });
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1)
+  password: z.string().min(1),
 });
 
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
     const validatedData = registerSchema.parse(req.body);
-    
+
     const existingUser = await prisma.user.findUnique({
-      where: { email: validatedData.email }
+      where: { email: validatedData.email },
     });
-    
+
     if (existingUser) {
       res.status(400).json({ error: 'User already exists' });
       return;
     }
 
     const existingOrg = await prisma.organization.findUnique({
-      where: { domain: validatedData.organizationDomain }
+      where: { domain: validatedData.organizationDomain },
     });
-    
+
     if (existingOrg) {
       res.status(400).json({ error: 'Organization domain already exists' });
       return;
@@ -48,8 +48,8 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     const organization = await prisma.organization.create({
       data: {
         name: validatedData.organizationName,
-        domain: validatedData.organizationDomain
-      }
+        domain: validatedData.organizationDomain,
+      },
     });
 
     const user = await prisma.user.create({
@@ -58,30 +58,37 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
         password: hashedPassword,
         firstName: validatedData.firstName,
         lastName: validatedData.lastName,
-        organizationId: organization.id
-      }
+        organizationId: organization.id,
+      },
     });
 
     const token = jwt.sign(
-      { 
-        userId: user.id, 
+      {
+        userId: user.id,
         organizationId: organization.id,
-        email: user.email 
+        email: user.email,
       },
       process.env.JWT_SECRET!,
       { expiresIn: '7d' }
     );
 
+    // Set JWT token in HttpOnly cookie
+    res.cookie('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
     res.status(201).json({
       message: 'User registered successfully',
-      token,
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        organizationId: user.organizationId
-      }
+        organizationId: user.organizationId,
+      },
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -96,37 +103,46 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 router.post('/login', async (req: Request, res: Response): Promise<void> => {
   try {
     const validatedData = loginSchema.parse(req.body);
-    
     const user = await prisma.user.findUnique({
       where: { email: validatedData.email },
-      include: { organization: true }
+      include: { organization: true },
     });
-    
+
     if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
-    const isPasswordValid = await bcrypt.compare(validatedData.password, user.password);
-    
+    const isPasswordValid = await bcrypt.compare(
+      validatedData.password,
+      user.password
+    );
+
     if (!isPasswordValid) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
     const token = jwt.sign(
-      { 
-        userId: user.id, 
+      {
+        userId: user.id,
         organizationId: user.organizationId,
-        email: user.email 
+        email: user.email,
       },
       process.env.JWT_SECRET!,
       { expiresIn: '7d' }
     );
 
+    // Set JWT token in HttpOnly cookie
+    res.cookie('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
     res.json({
       message: 'Login successful',
-      token,
       user: {
         id: user.id,
         email: user.email,
@@ -136,9 +152,9 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         organization: {
           id: user.organization.id,
           name: user.organization.name,
-          domain: user.organization.domain
-        }
-      }
+          domain: user.organization.domain,
+        },
+      },
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -148,6 +164,16 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+router.post('/logout', (req: Request, res: Response): void => {
+  res.clearCookie('auth-token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+
+  res.json({ message: 'Logged out successfully' });
 });
 
 export default router;

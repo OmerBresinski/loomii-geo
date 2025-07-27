@@ -9,6 +9,7 @@ router.use(requireAuth);
 
 // Get current user profile
 router.get('/profile', async (req, res) => {
+  console.log('####', req.auth);
   try {
     if (!req.auth?.userId) {
       return res.status(401).json({
@@ -30,10 +31,10 @@ router.get('/profile', async (req, res) => {
             id: true,
             name: true,
             domain: true,
-            createdAt: true
-          }
-        }
-      }
+            createdAt: true,
+          },
+        },
+      },
     });
 
     if (!user) {

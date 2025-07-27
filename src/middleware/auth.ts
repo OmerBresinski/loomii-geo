@@ -30,15 +30,23 @@ export const requireAuth = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Try to get token from cookie first, then fall back to Authorization header
+    let token = req.cookies?.['auth-token'];
+
+    console.log('token from cookie:', token);
+
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
+    if (!token) {
       res.status(401).json({ error: 'No token provided' });
       return;
     }
 
-    const token = authHeader.substring(7);
-    
     if (!process.env.JWT_SECRET) {
       console.error('JWT_SECRET environment variable is not set');
       res.status(500).json({ error: 'Server configuration error' });
@@ -46,10 +54,10 @@ export const requireAuth = async (
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as JWTPayload;
-    
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      include: { organization: true }
+      include: { organization: true },
     });
 
     if (!user) {
@@ -84,25 +92,31 @@ export const optionalAuth = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Try to get token from cookie first, then fall back to Authorization header
+    let token = req.cookies?.['auth-token'];
+
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
+    if (!token) {
       next();
       return;
     }
 
-    const token = authHeader.substring(7);
-    
     if (!process.env.JWT_SECRET) {
       next();
       return;
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET) as JWTPayload;
-    
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      include: { organization: true }
+      include: { organization: true },
     });
 
     if (user) {

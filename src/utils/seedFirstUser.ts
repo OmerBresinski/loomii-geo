@@ -5,7 +5,7 @@ async function seedFirstUser() {
   try {
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email: 'omerbres@loomii.ai' }
+      where: { email: 'omerbres@loomii.ai' },
     });
 
     if (existingUser) {
@@ -15,12 +15,16 @@ async function seedFirstUser() {
 
     // Check if organization exists
     const organization = await prisma.organization.findUnique({
-      where: { id: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s' }
+      where: { id: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s' },
     });
 
     if (!organization) {
-      console.error('Organization with ID org_2zQ7HOteaRAEoKhViL1GK4Jcj4s not found');
-      console.log('Please create the organization first or update the organization ID');
+      console.error(
+        'Organization with ID org_2zQ7HOteaRAEoKhViL1GK4Jcj4s not found'
+      );
+      console.log(
+        'Please create the organization first or update the organization ID'
+      );
       return;
     }
 
@@ -30,12 +34,12 @@ async function seedFirstUser() {
     // Create the user
     const user = await prisma.user.create({
       data: {
-        email: 'omerbres@loomii.ai',
+        email: 'omer@loomii.ai',
         password: hashedPassword,
         firstName: 'omer',
         lastName: 'bresinski',
-        organizationId: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s'
-      }
+        organizationId: 'org_2zQ7HOteaRAEoKhViL1GK4Jcj4s',
+      },
     });
 
     console.log('✅ First user created successfully:');
@@ -44,7 +48,6 @@ async function seedFirstUser() {
     console.log(`   Name: ${user.firstName} ${user.lastName}`);
     console.log(`   Organization ID: ${user.organizationId}`);
     console.log(`   Created at: ${user.createdAt}`);
-
   } catch (error) {
     console.error('❌ Error seeding first user:', error);
   } finally {
