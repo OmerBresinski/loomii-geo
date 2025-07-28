@@ -5,7 +5,6 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-// Apply authentication middleware to all routes in this router
 router.use(requireAuth);
 
 router.get('/', async (req, res) => {
@@ -13,7 +12,6 @@ router.get('/', async (req, res) => {
   const span = Number(((req.query.days as string) ?? '30').replace(/\D/g, ''));
   const since = subDays(new Date(), span);
 
-  // Get the organization's company
   const company = await prisma.company.findFirst({
     where: { organizationId },
   });
@@ -22,7 +20,6 @@ router.get('/', async (req, res) => {
     return res.status(404).json({ error: 'Company not found' });
   }
 
-  // Get all prompts for this company with their runs and mentions
   const prompts = await prisma.prompt.findMany({
     where: { companyId: company.id },
     include: {
@@ -68,31 +65,38 @@ router.get('/', async (req, res) => {
     let trendPercentage = 0;
 
     if (totalRuns >= 2) {
-      // Sort runs by date (newest first) 
-      const sortedRuns = [...prompt.promptRuns].sort((a, b) => b.runAt.getTime() - a.runAt.getTime());
-      
+      // Sort runs by date (newest first)
+      const sortedRuns = [...prompt.promptRuns].sort(
+        (a, b) => b.runAt.getTime() - a.runAt.getTime()
+      );
+
       // Cumulative visibility up to and including latest run (all runs)
       const allRuns = sortedRuns.length;
       const allMentions = sortedRuns.filter(run =>
         run.companyMentions.some(mention => mention.companyId === company.id)
       ).length;
-      const latestCumulativeVisibility = allRuns > 0 ? (allMentions / allRuns) * 100 : 0;
+      const latestCumulativeVisibility =
+        allRuns > 0 ? (allMentions / allRuns) * 100 : 0;
 
       // Cumulative visibility up to (but excluding) latest run
       const runsExcludingLatest = sortedRuns.slice(1); // Remove the first (latest) run
       const mentionsExcludingLatest = runsExcludingLatest.filter(run =>
         run.companyMentions.some(mention => mention.companyId === company.id)
       ).length;
-      const previousCumulativeVisibility = runsExcludingLatest.length > 0 ? 
-        (mentionsExcludingLatest / runsExcludingLatest.length) * 100 : 0;
+      const previousCumulativeVisibility =
+        runsExcludingLatest.length > 0
+          ? (mentionsExcludingLatest / runsExcludingLatest.length) * 100
+          : 0;
 
       // Calculate trend
-      const visibilityDifference = latestCumulativeVisibility - previousCumulativeVisibility;
-      
-      if (Math.abs(visibilityDifference) >= 1) { // 1% threshold
+      const visibilityDifference =
+        latestCumulativeVisibility - previousCumulativeVisibility;
+
+      if (Math.abs(visibilityDifference) >= 1) {
+        // 1% threshold
         trend = visibilityDifference > 0 ? 'up' : 'down';
       }
-      
+
       trendPercentage = Math.abs(Math.round(visibilityDifference * 100) / 100);
     }
 
@@ -131,7 +135,7 @@ router.get('/', async (req, res) => {
       .slice(0, 5)
       .map(comp => ({
         name: comp.domain.split('.')[0], // Extract name from domain (e.g., "coinbase" from "coinbase.com")
-        domain: comp.domain
+        domain: comp.domain,
       }));
 
     // Format tags
