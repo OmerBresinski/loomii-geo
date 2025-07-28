@@ -46,6 +46,17 @@ async function testMentionsIntegration() {
       console.log(`  🤖 ${mention.aiProvider.name}`);
       console.log(`  📄 Prompt: "${mention.prompt.text}"`);
       console.log(`  💬 Content: "${mention.content.substring(0, 100)}..."`);
+      
+      // Show mentioned companies data
+      if (mention.mentionedCompanies && Array.isArray(mention.mentionedCompanies)) {
+        console.log(`  🏷️  Mentioned companies (${mention.mentionedCompanies.length}):`);
+        mention.mentionedCompanies.forEach((company: any, index: number) => {
+          console.log(`    ${index + 1}. ${company.name} (${company.domain})`);
+        });
+      } else {
+        console.log(`  🏷️  Mentioned companies: None or data format issue`);
+      }
+      
       console.log(`  📅 Created: ${mention.createdAt}`);
       console.log('  ---');
     }

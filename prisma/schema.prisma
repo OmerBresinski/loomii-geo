@@ -42,9 +42,9 @@ model Company {
 }
 
 model Tag {
-    id      Int    @id @default(autoincrement())
-    label   String @unique
-    color   String
+    id    Int    @id @default(autoincrement())
+    label String @unique
+    color String
 
     promptTags PromptTag[]
 }
@@ -128,15 +128,16 @@ model SourceUrl {
 }
 
 model Mention {
-    id         Int        @id @default(autoincrement())
-    prompt     Prompt     @relation(fields: [promptId], references: [id])
-    promptId   Int
-    content    String
-    aiProvider AIProvider @relation(fields: [aiProviderId], references: [id])
-    aiProviderId Int
-    company    Company    @relation(fields: [companyId], references: [id])
-    companyId  Int
-    createdAt  DateTime   @default(now())
+    id                 Int        @id @default(autoincrement())
+    prompt             Prompt     @relation(fields: [promptId], references: [id])
+    promptId           Int
+    content            String
+    aiProvider         AIProvider @relation(fields: [aiProviderId], references: [id])
+    aiProviderId       Int
+    company            Company    @relation(fields: [companyId], references: [id])
+    companyId          Int
+    mentionedCompanies Json // Array of {name: string, domain: string} objects
+    createdAt          DateTime   @default(now())
 
     @@index([companyId, createdAt])
     @@index([createdAt])

@@ -276,7 +276,7 @@ export async function runDailyVisibilityJob() {
         });
         console.log(`        Created PromptRun (ID: ${promptRun.id})`);
 
-        // 3.5 · save mention if AI response mentions the current company
+        // 3.5 · save mention with all mentioned companies if current company is mentioned
         const currentCompanyMentioned = uniqueCompanyMentions.find(
           m => m.domain.toLowerCase() === company.domain.toLowerCase() ||
                m.name.toLowerCase() === company.name.toLowerCase()
@@ -284,15 +284,24 @@ export async function runDailyVisibilityJob() {
         
         if (currentCompanyMentioned) {
           console.log(`        🎯 AI response mentions current company: ${company.name}`);
+          console.log(`        📋 Found ${uniqueCompanyMentions.length} total company mentions`);
+          
+          // Prepare all mentioned companies data for JSON storage
+          const mentionedCompaniesData = uniqueCompanyMentions.map(mention => ({
+            name: mention.name,
+            domain: mention.domain
+          }));
+          
           await prisma.mention.create({
             data: {
               promptId: prompt.id,
               content: answer,
               aiProviderId: await upsertProvider(provider.key),
               companyId: company.id,
+              mentionedCompanies: mentionedCompaniesData,
             },
           });
-          console.log(`        ✅ Saved mention for company: ${company.name}`);
+          console.log(`        ✅ Saved mention for company: ${company.name} with ${mentionedCompaniesData.length} mentioned companies`);
         }
 
         // 4 · persist mentions + sources
