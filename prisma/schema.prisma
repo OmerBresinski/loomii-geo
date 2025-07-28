@@ -38,6 +38,7 @@ model Company {
     prompts        Prompt[]
     mentions       CompanyMention[]
     mentionDetails MentionDetail[]
+    recentMentions Mention[]
 }
 
 model Tag {
@@ -58,6 +59,7 @@ model Prompt {
 
     promptRuns PromptRun[]
     promptTags PromptTag[]
+    mentions   Mention[]
 }
 
 model PromptTag {
@@ -75,6 +77,7 @@ model AIProvider {
     name String @unique
 
     promptRuns PromptRun[]
+    mentions   Mention[]
 }
 
 model PromptRun {
@@ -122,6 +125,21 @@ model SourceUrl {
     createdAt DateTime @default(now())
 
     mentionDetails MentionDetail[]
+}
+
+model Mention {
+    id         Int        @id @default(autoincrement())
+    prompt     Prompt     @relation(fields: [promptId], references: [id])
+    promptId   Int
+    content    String
+    aiProvider AIProvider @relation(fields: [aiProviderId], references: [id])
+    aiProviderId Int
+    company    Company    @relation(fields: [companyId], references: [id])
+    companyId  Int
+    createdAt  DateTime   @default(now())
+
+    @@index([companyId, createdAt])
+    @@index([createdAt])
 }
 
 model MentionDetail {

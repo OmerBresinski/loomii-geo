@@ -276,6 +276,25 @@ export async function runDailyVisibilityJob() {
         });
         console.log(`        Created PromptRun (ID: ${promptRun.id})`);
 
+        // 3.5 · save mention if AI response mentions the current company
+        const currentCompanyMentioned = uniqueCompanyMentions.find(
+          m => m.domain.toLowerCase() === company.domain.toLowerCase() ||
+               m.name.toLowerCase() === company.name.toLowerCase()
+        );
+        
+        if (currentCompanyMentioned) {
+          console.log(`        🎯 AI response mentions current company: ${company.name}`);
+          await prisma.mention.create({
+            data: {
+              promptId: prompt.id,
+              content: answer,
+              aiProviderId: await upsertProvider(provider.key),
+              companyId: company.id,
+            },
+          });
+          console.log(`        ✅ Saved mention for company: ${company.name}`);
+        }
+
         // 4 · persist mentions + sources
         console.log(`        Processing ${sources.length} sources...`);
 
