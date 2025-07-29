@@ -227,177 +227,233 @@ export async function runDailyVisibilityJob() {
 
   for (const company of companies) {
     console.log(`\n🏢 Processing company: ${company.name}`);
-    for (const prompt of company.prompts) {
-      const tagLabels = prompt.promptTags.map(pt => pt.tag.label).join(', ');
-      console.log(`  🏷️  Processing prompt (${tagLabels}): "${prompt.text}"`);
-      for (const provider of PROVIDERS) {
-        console.log(`    🤖 Using provider: ${provider.key}`);
-        // 0 · get the model's answer
-        console.log('        [1/4] Getting response from AI provider...');
-        const { text: answer, sources } = await provider.call(prompt.text);
-
-        console.log({ sources });
-
-        // 1 · extract companies + URLs
-        console.log('        [2/4] Extracting company mentions...');
-        const ext = await extractMentions(prompt.text, answer);
-        console.log(
-          `        Found ${ext.companyMentions.length} company mentions and ${sources.length} sources.`
-        );
-
-        // 2 · score sentiment per company
-        console.log('        [3/4] Scoring sentiments...');
-
-        // Remove duplicates based on name and domain combination
-        const uniqueCompanyMentions = ext.companyMentions.filter(
-          (mention, index, arr) =>
-            arr.findIndex(
-              m => m.name === mention.name && m.domain === mention.domain
-            ) === index
-        );
-
-        const sent = await scoreSentiments(
-          answer,
-          uniqueCompanyMentions.map(({ name, domain }) => ({ name, domain }))
-        );
-        const sentimentMap = new Map(
-          sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
-        );
-        console.log(`        Scored ${sent.sentiments.length} sentiments.`);
-
-        // 3 · persist PromptRun
-        console.log('        [4/4] Persisting data to database...');
-        const promptRun = await prisma.promptRun.create({
-          data: {
-            promptId: prompt.id,
-            providerId: await upsertProvider(provider.key),
-            responseRaw: answer,
-          },
-        });
-        console.log(`        Created PromptRun (ID: ${promptRun.id})`);
-
-        // 3.5 · save mention with all mentioned companies if current company is mentioned
-        const currentCompanyMentioned = uniqueCompanyMentions.find(
-          m => m.domain.toLowerCase() === company.domain.toLowerCase() ||
-               m.name.toLowerCase() === company.name.toLowerCase()
-        );
+    
+    // Parallelize prompt processing
+    const promptResults = await Promise.allSettled(
+      company.prompts.map(async (prompt) => {
+        const tagLabels = prompt.promptTags.map(pt => pt.tag.label).join(', ');
+        console.log(`  🏷️  Processing prompt (${tagLabels}): "${prompt.text}"`);
         
-        if (currentCompanyMentioned) {
-          console.log(`        🎯 AI response mentions current company: ${company.name}`);
-          console.log(`        📋 Found ${uniqueCompanyMentions.length} total company mentions`);
-          
-          // Prepare all mentioned companies data for JSON storage
-          const mentionedCompaniesData = uniqueCompanyMentions.map(mention => ({
-            name: mention.name,
-            domain: mention.domain
-          }));
-          
-          await prisma.mention.create({
-            data: {
-              promptId: prompt.id,
-              content: answer,
-              aiProviderId: await upsertProvider(provider.key),
-              companyId: company.id,
-              mentionedCompanies: mentionedCompaniesData,
-            },
-          });
-          console.log(`        ✅ Saved mention for company: ${company.name} with ${mentionedCompaniesData.length} mentioned companies`);
-        }
+        // Parallelize provider processing
+        const providerResults = await Promise.allSettled(
+          PROVIDERS.map(async (provider) => {
+            console.log(`    🤖 Using provider: ${provider.key}`);
+            // 0 · get the model's answer
+            console.log('        [1/4] Getting response from AI provider...');
+            const { text: answer, sources } = await provider.call(prompt.text);
 
-        // 4 · persist mentions + sources
-        console.log(`        Processing ${sources.length} sources...`);
+            console.log({ sources });
 
-        // First, process all sources and create SourceUrl records
-        const sourceUrlIds: number[] = [];
-        for (const source of sources) {
-          const url = source.url;
-          if (!url) continue;
+            // 1 · extract companies + URLs
+            console.log('        [2/4] Extracting company mentions...');
+            const ext = await extractMentions(prompt.text, answer);
+            console.log(
+              `        Found ${ext.companyMentions.length} company mentions and ${sources.length} sources.`
+            );
 
-          const websiteNameResult = await extractWebsiteName(url);
+            // 2 · score sentiment per company
+            console.log('        [3/4] Scoring sentiments...');
 
-          const domain = new URL(url).hostname.replace(/^www\./, '');
-          const sourceId = (
-            await prisma.source.upsert({
-              where: { domain },
-              create: { domain, name: websiteNameResult.websiteName },
-              update: {},
-            })
-          ).id;
+            // Remove duplicates based on name and domain combination
+            const uniqueCompanyMentions = ext.companyMentions.filter(
+              (mention, index, arr) =>
+                arr.findIndex(
+                  m => m.name === mention.name && m.domain === mention.domain
+                ) === index
+            );
 
-          const sourceUrlId = (
-            await prisma.sourceUrl.upsert({
-              where: { url },
-              create: { url, sourceId },
-              update: {},
-            })
-          ).id;
+            const sent = await scoreSentiments(
+              answer,
+              uniqueCompanyMentions.map(({ name, domain }) => ({ name, domain }))
+            );
+            const sentimentMap = new Map(
+              sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
+            );
+            console.log(`        Scored ${sent.sentiments.length} sentiments.`);
 
-          sourceUrlIds.push(sourceUrlId);
-        }
-
-        const sourcesOfCompany = [];
-        for (const source of sources) {
-          const sourcePage = await fetch(source.url);
-          const sourcePageText = await sourcePage.text();
-
-          console.log({ sourcePageText });
-
-          if (
-            sourcePageText.toLowerCase().includes(company.name.toLowerCase())
-          ) {
-            sourcesOfCompany.push(source.url);
-          }
-        }
-
-        // Then, process each company mention and associate with all sources
-        for (const m of uniqueCompanyMentions) {
-          const companyId = await upsertCompany(m.name, m.domain);
-          const sentiment = sentimentMap.get(m.domain) ?? 0;
-
-          console.log('Creating mention for', m.name, m.domain);
-
-          const companyMention = await prisma.companyMention.upsert({
-            where: {
-              promptRunId_companyId: {
-                promptRunId: promptRun.id,
-                companyId,
+            // 3 · persist PromptRun
+            console.log('        [4/4] Persisting data to database...');
+            const promptRun = await prisma.promptRun.create({
+              data: {
+                promptId: prompt.id,
+                providerId: await upsertProvider(provider.key),
+                responseRaw: answer,
               },
-            },
-            update: {
-              sentiment, // Update sentiment if it already exists
-            },
-            create: {
-              promptRunId: promptRun.id,
-              companyId,
-              sentiment,
-            },
-          });
-          console.log(
-            `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
-          );
-
-          // Associate this company mention with all sources from this prompt run
-          for (const source of sourcesOfCompany) {
-            const sourceUrl = await prisma.sourceUrl.findUnique({
-              where: { url: source },
             });
-            if (sourceUrl) {
-              await prisma.mentionDetail.create({
+            console.log(`        Created PromptRun (ID: ${promptRun.id})`);
+
+            // 3.5 · save mention with all mentioned companies if current company is mentioned
+            const currentCompanyMentioned = uniqueCompanyMentions.find(
+              m => m.domain.toLowerCase() === company.domain.toLowerCase() ||
+                   m.name.toLowerCase() === company.name.toLowerCase()
+            );
+            
+            if (currentCompanyMentioned) {
+              console.log(`        🎯 AI response mentions current company: ${company.name}`);
+              console.log(`        📋 Found ${uniqueCompanyMentions.length} total company mentions`);
+              
+              // Prepare all mentioned companies data for JSON storage
+              const mentionedCompaniesData = uniqueCompanyMentions.map(mention => ({
+                name: mention.name,
+                domain: mention.domain
+              }));
+              
+              await prisma.mention.create({
                 data: {
-                  promptRunId: promptRun.id,
-                  companyId,
-                  sourceUrlId: sourceUrl.id,
-                  count: 1, // presence flag
+                  promptId: prompt.id,
+                  content: answer,
+                  aiProviderId: await upsertProvider(provider.key),
+                  companyId: company.id,
+                  mentionedCompanies: mentionedCompaniesData,
                 },
               });
+              console.log(`        ✅ Saved mention for company: ${company.name} with ${mentionedCompaniesData.length} mentioned companies`);
             }
-          }
-        }
-        console.log(
-          `        Finished persisting data for prompt: "${prompt.text}"`
+
+            // 4 · persist mentions + sources
+            console.log(`        Processing ${sources.length} sources...`);
+
+            // Parallelize source processing
+            const sourceResults = await Promise.allSettled(
+              sources.map(async (source) => {
+                const url = source.url;
+                if (!url) return null;
+
+                const websiteNameResult = await extractWebsiteName(url);
+
+                const domain = new URL(url).hostname.replace(/^www\./, '');
+                const sourceId = (
+                  await prisma.source.upsert({
+                    where: { domain },
+                    create: { domain, name: websiteNameResult.websiteName },
+                    update: {},
+                  })
+                ).id;
+
+                const sourceUrlId = (
+                  await prisma.sourceUrl.upsert({
+                    where: { url },
+                    create: { url, sourceId },
+                    update: {},
+                  })
+                ).id;
+
+                return { url, sourceUrlId };
+              })
+            );
+
+            const sourceUrlIds: number[] = [];
+            sourceResults.forEach(result => {
+              if (result.status === 'fulfilled' && result.value) {
+                sourceUrlIds.push(result.value.sourceUrlId);
+              } else if (result.status === 'rejected') {
+                console.error('Source processing failed:', result.reason);
+              }
+            });
+
+            // Parallelize source page fetching
+            const sourcePageResults = await Promise.allSettled(
+              sources.map(async (source) => {
+                const sourcePage = await fetch(source.url);
+                const sourcePageText = await sourcePage.text();
+
+                console.log({ sourcePageText });
+
+                if (
+                  sourcePageText.toLowerCase().includes(company.name.toLowerCase())
+                ) {
+                  return source.url;
+                }
+                return null;
+              })
+            );
+
+            const sourcesOfCompany: string[] = [];
+            sourcePageResults.forEach(result => {
+              if (result.status === 'fulfilled' && result.value) {
+                sourcesOfCompany.push(result.value);
+              } else if (result.status === 'rejected') {
+                console.error('Source page fetch failed:', result.reason);
+              }
+            });
+
+            // Parallelize company mention processing
+            await Promise.allSettled(
+              uniqueCompanyMentions.map(async (m) => {
+                const companyId = await upsertCompany(m.name, m.domain);
+                const sentiment = sentimentMap.get(m.domain) ?? 0;
+
+                console.log('Creating mention for', m.name, m.domain);
+
+                const companyMention = await prisma.companyMention.upsert({
+                  where: {
+                    promptRunId_companyId: {
+                      promptRunId: promptRun.id,
+                      companyId,
+                    },
+                  },
+                  update: {
+                    sentiment, // Update sentiment if it already exists
+                  },
+                  create: {
+                    promptRunId: promptRun.id,
+                    companyId,
+                    sentiment,
+                  },
+                });
+                console.log(
+                  `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
+                );
+
+                // Associate this company mention with all sources from this prompt run
+                await Promise.allSettled(
+                  sourcesOfCompany.map(async (source) => {
+                    const sourceUrl = await prisma.sourceUrl.findUnique({
+                      where: { url: source },
+                    });
+                    if (sourceUrl) {
+                      await prisma.mentionDetail.create({
+                        data: {
+                          promptRunId: promptRun.id,
+                          companyId,
+                          sourceUrlId: sourceUrl.id,
+                          count: 1, // presence flag
+                        },
+                      });
+                    }
+                  })
+                );
+              })
+            );
+            console.log(
+              `        Finished persisting data for prompt: "${prompt.text}" with provider: ${provider.key}`
+            );
+
+            return { provider: provider.key, success: true };
+          })
         );
+
+        // Log provider results for this prompt
+        providerResults.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error(`Provider ${PROVIDERS[index].key} failed for prompt "${prompt.text}":`, result.reason);
+          } else {
+            console.log(`Provider ${result.value.provider} completed successfully for prompt "${prompt.text}"`);
+          }
+        });
+
+        return { promptId: prompt.id, promptText: prompt.text, success: true };
+      })
+    );
+
+    // Log prompt results for this company
+    promptResults.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`Prompt "${company.prompts[index].text}" failed for company ${company.name}:`, result.reason);
+      } else {
+        console.log(`Prompt "${result.value.promptText}" completed successfully for company ${company.name}`);
       }
-    }
+    });
   }
   console.log('\n✅ Daily visibility job finished successfully!');
 }
