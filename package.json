@@ -27,6 +27,7 @@
     "test:api": "npm run test:analytics && npm run test:competitors && npm run test:sources",
     "seed:tags": "tsx src/utils/seedTags.ts",
     "seed:first-user": "tsx src/utils/seedFirstUser.ts",
+    "seed:prompts": "tsx src/utils/seedPrompts.ts",
     "migrate:dates": "tsx src/utils/migratePromptRunDates.ts"
   },
   "keywords": [
