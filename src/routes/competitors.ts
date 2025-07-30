@@ -8,13 +8,36 @@ router.use(requireAuth);
 
 router.get('/', async (req, res) => {
   const organizationId = req.auth?.organization?.id;
-  const span = Number('30'.replace(/\D/g, ''));
+  const span = Number((req.query.span as string) || '30');
+  const promptId = req.query.promptId ? Number(req.query.promptId) : undefined;
+  const tagIds = req.query.tagIds ? (req.query.tagIds as string).split(',').map(id => Number(id)) : undefined;
+
+  // Build the prompt filter based on query parameters
+  let promptFilter: any = {};
+  
+  if (promptId) {
+    promptFilter.id = promptId;
+  } else if (tagIds && tagIds.length > 0) {
+    promptFilter.promptTags = {
+      some: {
+        tagId: {
+          in: tagIds
+        }
+      }
+    };
+  }
 
   const company = await prisma.company.findUnique({
     where: { organizationId },
     include: {
       prompts: {
+        where: promptFilter,
         include: {
+          promptTags: {
+            include: {
+              tag: true
+            }
+          },
           promptRuns: {
             where: {
               runAt: {
@@ -36,49 +59,101 @@ router.get('/', async (req, res) => {
     return res.status(404).json({ error: 'Company not found' });
   }
 
+  if (company.prompts.length === 0) {
+    return res.json({
+      competitors: [],
+      totalPrompts: 0,
+      totalRuns: 0,
+      filters: {
+        promptId,
+        tagIds,
+        span
+      }
+    });
+  }
+
+  // Calculate competitor visibility data
   const competitorData = new Map<
     number,
     {
       companyId: number;
       companyName: string;
       companyDomain: string;
-      mentions: number;
+      totalMentions: number;
       sentiments: number[];
+      promptsMentionedIn: Set<number>;
     }
   >();
 
+  let totalRuns = 0;
+
   company.prompts.forEach(prompt => {
     prompt.promptRuns.forEach(run => {
+      totalRuns++;
+      
+      // Track which companies were mentioned in this run (including your own company)
+      const companiesMentionedInRun = new Set<number>();
       run.companyMentions.forEach(mention => {
-        if (mention.companyId !== company.id) {
-          const existing = competitorData.get(mention.companyId) || {
-            companyId: mention.companyId,
-            companyName: mention.company.name,
-            companyDomain: mention.company.domain,
-            mentions: 0,
-            sentiments: [],
-          };
-          existing.mentions += 1;
-          existing.sentiments.push(mention.sentiment);
-          competitorData.set(mention.companyId, existing);
-        }
+        companiesMentionedInRun.add(mention.companyId);
+      });
+
+      // For each company mentioned in this run, count it once
+      companiesMentionedInRun.forEach(companyId => {
+        const mention = run.companyMentions.find(m => m.companyId === companyId)!;
+        const existing = competitorData.get(companyId) || {
+          companyId: mention.companyId,
+          companyName: mention.company.name,
+          companyDomain: mention.company.domain,
+          totalMentions: 0,
+          sentiments: [],
+          promptsMentionedIn: new Set<number>(),
+        };
+        
+        existing.totalMentions += 1;
+        existing.sentiments.push(mention.sentiment);
+        existing.promptsMentionedIn.add(prompt.id);
+        competitorData.set(companyId, existing);
       });
     });
   });
 
-  const payload = Array.from(competitorData.values())
+  // Calculate visibility percentage and create final payload
+  const allCompanies = Array.from(competitorData.values())
     .map(comp => ({
       companyId: comp.companyId,
       companyName: comp.companyName,
       companyDomain: comp.companyDomain,
-      mentions: comp.mentions,
+      mentions: comp.totalMentions,
+      visibility: totalRuns > 0 ? (comp.totalMentions / totalRuns) * 100 : 0,
       averageSentiment:
         comp.sentiments.length > 0
-          ? comp.sentiments.reduce((sum, sentiment) => sum + sentiment, 0) /
-            comp.sentiments.length
+          ? comp.sentiments.reduce((sum, sentiment) => sum + sentiment, 0) / comp.sentiments.length
           : 0,
+      promptCount: comp.promptsMentionedIn.size,
+      isYourCompany: comp.companyId === company.id, // Flag to identify your company
     }))
-    .sort((a, b) => b.mentions - a.mentions);
+    .filter(comp => comp.visibility > 5 || comp.isYourCompany) // Include your company regardless of visibility threshold
+    .sort((a, b) => b.visibility - a.visibility); // Sort by visibility (highest first)
+
+  // Separate your company from competitors for the summary
+  const yourCompany = allCompanies.find(comp => comp.isYourCompany);
+  const competitors = allCompanies.filter(comp => !comp.isYourCompany);
+
+  const payload = {
+    companies: allCompanies, // All companies including your own
+    totalPrompts: company.prompts.length,
+    totalRuns,
+    filters: {
+      promptId,
+      tagIds,
+      span
+    },
+    summary: {
+      totalCompetitors: competitors.length,
+      averageVisibility: yourCompany ? yourCompany.visibility : 0, // YOUR company's visibility
+      topCompetitor: competitors.length > 0 ? competitors[0] : null,
+    }
+  };
 
   return res.json(payload);
 });
