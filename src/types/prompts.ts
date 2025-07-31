@@ -57,3 +57,22 @@ export interface ValidationError {
   field: string;
   message: string;
 }
+
+// Prompt usage tracking for progress bar
+export interface PromptUsageResponse {
+  currentCount: number; // Current number of prompts
+  maxLimit: number; // Maximum allowed prompts (20)
+  remainingCount: number; // How many prompts can still be created
+  usagePercentage: number; // Percentage used (0-100)
+  canCreateMore: boolean; // Whether user can create more prompts
+}
+
+// Error response when prompt limit is exceeded
+export interface PromptLimitError {
+  error: 'Prompt limit exceeded';
+  message: string;
+  details: {
+    currentCount: number;
+    maxLimit: number;
+  };
+}

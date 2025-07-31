@@ -341,6 +341,23 @@ router.post(
         return res.status(404).json({ error: 'Company not found' });
       }
 
+      // Check prompt limit (20 prompts per organization)
+      const currentPromptCount = await prisma.prompt.count({
+        where: { companyId: company.id },
+      });
+
+      const PROMPT_LIMIT = 20;
+      if (currentPromptCount >= PROMPT_LIMIT) {
+        return res.status(400).json({
+          error: 'Prompt limit exceeded',
+          message: `You have reached the maximum limit of ${PROMPT_LIMIT} prompts per organization`,
+          details: {
+            currentCount: currentPromptCount,
+            maxLimit: PROMPT_LIMIT,
+          },
+        });
+      }
+
       // Validate that all provided tag IDs exist
       if (tagIds && tagIds.length > 0) {
         const existingTags = await prisma.tag.findMany({
@@ -403,6 +420,45 @@ router.post(
     }
   }
 );
+
+// GET /prompts/usage - Get prompt usage stats for progress bar
+router.get('/usage', async (req: Request, res: Response) => {
+  const organizationId = req.auth?.organization?.id;
+
+  try {
+    // Get the organization's company
+    const company = await prisma.company.findFirst({
+      where: { organizationId },
+    });
+
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Count current prompts
+    const currentCount = await prisma.prompt.count({
+      where: { companyId: company.id },
+    });
+
+    const maxLimit = 20;
+    const remainingCount = maxLimit - currentCount;
+    const usagePercentage = Math.round((currentCount / maxLimit) * 100);
+
+    return res.json({
+      currentCount,
+      maxLimit,
+      remainingCount,
+      usagePercentage,
+      canCreateMore: currentCount < maxLimit,
+    });
+  } catch (error) {
+    console.error('Error fetching prompt usage:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'Failed to fetch prompt usage',
+    });
+  }
+});
 
 // GET /prompts/tags - Get all available tags
 router.get('/tags', async (req: Request, res: Response) => {
