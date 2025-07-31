@@ -1,7 +1,8 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { prisma } from '@/utils/database';
 import { subDays } from 'date-fns';
 import { requireAuth } from '../middleware/auth';
+import { body, validationResult } from 'express-validator';
 
 const router = Router();
 
@@ -292,6 +293,132 @@ router.get('/runs/:promptId', async (req, res) => {
   });
 
   return res.json(runData);
+});
+
+// POST /prompts - Create a new prompt
+router.post(
+  '/',
+  [
+    body('text')
+      .trim()
+      .notEmpty()
+      .withMessage('Prompt text is required')
+      .isLength({ min: 10, max: 500 })
+      .withMessage('Prompt text must be between 10 and 500 characters'),
+    body('tagIds')
+      .optional()
+      .isArray()
+      .withMessage('Tag IDs must be an array')
+      .custom((tagIds) => {
+        if (tagIds && tagIds.some((id: any) => !Number.isInteger(id) || id <= 0)) {
+          throw new Error('All tag IDs must be positive integers');
+        }
+        return true;
+      }),
+  ],
+  async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: errors.array().map(err => ({
+          field: err.type === 'field' ? err.path : 'unknown',
+          message: err.msg,
+        })),
+      });
+    }
+
+    const organizationId = req.auth?.organization?.id;
+    const { text, tagIds } = req.body;
+
+    try {
+      // Get the organization's company
+      const company = await prisma.company.findFirst({
+        where: { organizationId },
+      });
+
+      if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+
+      // Validate that all provided tag IDs exist
+      if (tagIds && tagIds.length > 0) {
+        const existingTags = await prisma.tag.findMany({
+          where: { id: { in: tagIds } },
+          select: { id: true },
+        });
+
+        const existingTagIds = existingTags.map(tag => tag.id);
+        const invalidTagIds = tagIds.filter((id: number) => !existingTagIds.includes(id));
+
+        if (invalidTagIds.length > 0) {
+          return res.status(400).json({
+            error: 'Invalid tag IDs',
+            details: `Tag IDs ${invalidTagIds.join(', ')} do not exist`,
+          });
+        }
+      }
+
+      // Create the prompt with tag associations
+      const prompt = await prisma.prompt.create({
+        data: {
+          text,
+          companyId: company.id,
+          isActive: true,
+          promptTags: tagIds && tagIds.length > 0 ? {
+            create: tagIds.map((tagId: number) => ({
+              tagId,
+            })),
+          } : undefined,
+        },
+        include: {
+          promptTags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      });
+
+      // Format the response to match the interface
+      const response = {
+        promptId: prompt.id,
+        text: prompt.text,
+        isActive: prompt.isActive,
+        createdAt: prompt.createdAt,
+        tags: prompt.promptTags.map(pt => ({
+          id: pt.tag.id,
+          label: pt.tag.label,
+          color: pt.tag.color,
+        })),
+      };
+
+      return res.status(201).json(response);
+    } catch (error) {
+      console.error('Error creating prompt:', error);
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'Failed to create prompt',
+      });
+    }
+  }
+);
+
+// GET /prompts/tags - Get all available tags
+router.get('/tags', async (req: Request, res: Response) => {
+  try {
+    const tags = await prisma.tag.findMany({
+      orderBy: { label: 'asc' },
+    });
+
+    return res.json({ tags });
+  } catch (error) {
+    console.error('Error fetching tags:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'Failed to fetch tags',
+    });
+  }
 });
 
 export { router as promptsRouter };
