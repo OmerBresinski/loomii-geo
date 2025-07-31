@@ -48,12 +48,10 @@ app.use(
         return callback(null, true);
       } else {
         console.log('❌ CORS blocked origin:', origin);
+        console.log('🔍 Environment:', process.env.ENVIRONMENT);
         // Temporarily allow all origins for debugging
-        if (process.env.ENVIRONMENT === 'production') {
-          console.log('🚨 Temporarily allowing all origins for debugging');
-          return callback(null, true);
-        }
-        return callback(new Error('Not allowed by CORS'), false);
+        console.log('🚨 Temporarily allowing ALL origins for debugging');
+        return callback(null, true);
       }
     },
     credentials: true,
