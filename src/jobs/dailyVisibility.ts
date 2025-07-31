@@ -282,14 +282,53 @@ export async function runDailyVisibilityJob() {
             });
             console.log(`        Created PromptRun (ID: ${promptRun.id})`);
 
+            // Helper function to normalize domain (remove protocol, www, etc.)
+            const normalizeDomain = (domain: string): string => {
+              if (!domain) return '';
+              return domain.toLowerCase()
+                .replace(/^https?:\/\//, '') // Remove protocol
+                .replace(/^www\./, '')       // Remove www
+                .replace(/\/$/, '');         // Remove trailing slash
+            };
+
             // 3.5 · save mention with all mentioned companies if current company is mentioned
             const currentCompanyMentioned = uniqueCompanyMentions.find(
-              m => m.domain.toLowerCase() === company.domain.toLowerCase() ||
-                   m.name.toLowerCase() === company.name.toLowerCase()
+              m => {
+                if (!m.domain || !company.domain) {
+                  // If no domain info, only match by exact name (be very cautious)
+                  return m.name.toLowerCase() === company.name.toLowerCase();
+                }
+
+                // Normalize both domains for comparison
+                const normalizedMentionDomain = normalizeDomain(m.domain);
+                const normalizedCompanyDomain = normalizeDomain(company.domain);
+                
+                // First try exact normalized domain match
+                if (normalizedMentionDomain === normalizedCompanyDomain) {
+                  return true;
+                }
+                
+                // If domains don't match, only allow name matching if they share the same base domain
+                if (m.name.toLowerCase() === company.name.toLowerCase()) {
+                  // Extract base domain (e.g., "company.com" from "subdomain.company.com")
+                  const getMentionBaseDomain = (domain: string): string => {
+                    const parts = domain.split('.');
+                    return parts.length >= 2 ? parts.slice(-2).join('.') : domain;
+                  };
+                  
+                  const mentionBaseDomain = getMentionBaseDomain(normalizedMentionDomain);
+                  const companyBaseDomain = getMentionBaseDomain(normalizedCompanyDomain);
+                  
+                  return mentionBaseDomain === companyBaseDomain;
+                }
+                
+                return false;
+              }
             );
             
             if (currentCompanyMentioned) {
-              console.log(`        🎯 AI response mentions current company: ${company.name}`);
+              console.log(`        🎯 AI response mentions current company: ${company.name} (${company.domain})`);
+              console.log(`        🔍 Matched mention: ${currentCompanyMentioned.name} (${currentCompanyMentioned.domain})`);
               console.log(`        📋 Found ${uniqueCompanyMentions.length} total company mentions`);
               
               // Prepare all mentioned companies data for JSON storage
