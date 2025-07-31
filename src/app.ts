@@ -18,8 +18,22 @@ const app = express();
 
 app.set('trust proxy', true);
 
-// Security middleware
-app.use(helmet());
+// Security middleware - configure helmet for production HTTPS
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: process.env.NODE_ENV === 'production' ? {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  } : false, // Disable HSTS in development
+}));
 
 // CORS configuration - get allowed origins from FRONTEND_URLS environment variable
 console.log('🔍 Raw FRONTEND_URLS:', JSON.stringify(process.env.FRONTEND_URLS));
@@ -128,6 +142,20 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     documentation: '/api/health',
   });
+});
+
+// Add error logging middleware before error handlers
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error('🔥 Server Error:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    headers: req.headers,
+    protocol: req.protocol,
+    secure: req.secure
+  });
+  next(err);
 });
 
 // Error handling middleware (must be last)
