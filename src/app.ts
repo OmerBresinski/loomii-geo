@@ -20,24 +20,29 @@ const app = express();
 app.use(helmet());
 
 // CORS configuration - get allowed origins from FRONTEND_URLS environment variable
-const allowedOrigins = process.env.FRONTEND_URLS 
-  ? process.env.FRONTEND_URLS.split(',').map(origin => origin.trim())
+console.log('🔍 Raw FRONTEND_URLS:', JSON.stringify(process.env.FRONTEND_URLS));
+
+const allowedOrigins = process.env.FRONTEND_URLS
+  ? process.env.FRONTEND_URLS.split(/[,;]/)
+      .map(origin => origin.trim())
+      .filter(origin => origin.length > 0)
   : ['http://localhost:3000', 'http://localhost:5173']; // fallback for development
 
 console.log('🌐 Allowed CORS origins:', allowedOrigins);
+console.log('🌐 Origins as JSON:', JSON.stringify(allowedOrigins));
 
 app.use(
   cors({
     origin: function (origin, callback) {
       console.log('🔍 CORS request from origin:', origin);
       console.log('🔍 Allowed origins:', allowedOrigins);
-      
+
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) {
         console.log('✅ Allowing request with no origin');
         return callback(null, true);
       }
-      
+
       if (allowedOrigins.includes(origin)) {
         console.log('✅ Origin allowed:', origin);
         return callback(null, true);
