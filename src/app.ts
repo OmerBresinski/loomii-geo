@@ -19,10 +19,26 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-// CORS configuration - allow all origins for now to fix the immediate issue
+// CORS configuration - get allowed origins from FRONTEND_URLS environment variable
+const allowedOrigins = process.env.FRONTEND_URLS 
+  ? process.env.FRONTEND_URLS.split(',').map(origin => origin.trim())
+  : ['http://localhost:3000', 'http://localhost:5173']; // fallback for development
+
+console.log('🌐 Allowed CORS origins:', allowedOrigins);
+
 app.use(
   cors({
-    origin: true,
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        console.log('CORS blocked origin:', origin);
+        return callback(new Error('Not allowed by CORS'), false);
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
@@ -34,9 +50,14 @@ app.use(
       'Cache-Control',
       'X-HTTP-Method-Override',
     ],
+    optionsSuccessStatus: 200, // Some legacy browsers choke on 204
   })
 );
 
+// Handle preflight requests
+app.options('*', (req, res) => {
+  res.sendStatus(200);
+});
 
 // Rate limiting - disabled in development
 if (process.env.ENVIRONMENT !== 'development') {
