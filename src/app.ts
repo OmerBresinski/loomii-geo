@@ -38,16 +38,21 @@ app.use(
 );
 
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.API_RATE_LIMIT || '100'), // limit each IP to 100 requests per windowMs
-  message: {
-    success: false,
-    error: 'Too many requests from this IP, please try again later.',
-  },
-});
-app.use('/api', limiter);
+// Rate limiting - disabled in development
+if (process.env.ENVIRONMENT !== 'development') {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: parseInt(process.env.API_RATE_LIMIT || '100'), // limit each IP to 100 requests per windowMs
+    message: {
+      success: false,
+      error: 'Too many requests from this IP, please try again later.',
+    },
+  });
+  app.use('/api', limiter);
+  console.log('✓ Rate limiting enabled');
+} else {
+  console.log('⚠ Rate limiting disabled for development environment');
+}
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
