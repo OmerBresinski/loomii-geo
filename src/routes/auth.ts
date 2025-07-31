@@ -43,15 +43,6 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const existingCompany = await prisma.company.findUnique({
-      where: { domain: validatedData.organizationDomain },
-    });
-
-    if (existingCompany) {
-      res.status(400).json({ error: 'Company domain already exists' });
-      return;
-    }
-
     const hashedPassword = await bcrypt.hash(validatedData.password, 12);
 
     const organization = await prisma.organization.create({
