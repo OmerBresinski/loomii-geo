@@ -31,43 +31,18 @@ const allowedOrigins = process.env.FRONTEND_URLS
 console.log('🌐 Allowed CORS origins:', allowedOrigins);
 console.log('🌐 Origins as JSON:', JSON.stringify(allowedOrigins));
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      console.log('🔍 CORS request from origin:', origin);
-      console.log('🔍 Allowed origins:', allowedOrigins);
+// Most permissive CORS setup for testing
+app.use(cors({
+  origin: "*", // Allow all origins
+  credentials: false, // Disable credentials to be maximally permissive
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['*'],
+  exposedHeaders: ['*'],
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
+}));
 
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) {
-        console.log('✅ Allowing request with no origin');
-        return callback(null, true);
-      }
-
-      if (allowedOrigins.includes(origin)) {
-        console.log('✅ Origin allowed:', origin);
-        return callback(null, true);
-      } else {
-        console.log('❌ CORS blocked origin:', origin);
-        console.log('🔍 Environment:', process.env.ENVIRONMENT);
-        // Temporarily allow all origins for debugging
-        console.log('🚨 Temporarily allowing ALL origins for debugging');
-        return callback(null, true);
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: [
-      'Origin',
-      'X-Requested-With',
-      'Content-Type',
-      'Accept',
-      'Authorization',
-      'Cache-Control',
-      'X-HTTP-Method-Override',
-    ],
-    optionsSuccessStatus: 200, // Some legacy browsers choke on 204
-  })
-);
+console.log('🚨 Using MAXIMALLY PERMISSIVE CORS for testing - this should work with any origin!');
 
 // Handle preflight requests
 app.options('*', (req, res) => {
