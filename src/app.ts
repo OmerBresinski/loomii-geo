@@ -16,6 +16,8 @@ dotenv.config();
 
 const app = express();
 
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet());
 
@@ -32,38 +34,40 @@ console.log('🌐 Allowed CORS origins:', allowedOrigins);
 console.log('🌐 Origins as JSON:', JSON.stringify(allowedOrigins));
 
 // CORS with specific origin for credentials support
-app.use(cors({
-  origin: function (origin, callback) {
-    console.log('🔍 CORS request from origin:', origin);
-    console.log('🔍 Allowed origins:', allowedOrigins);
-    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      console.log('✅ Allowing request with no origin');
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.includes(origin)) {
-      console.log('✅ Origin allowed:', origin);
-      return callback(null, origin); // Return the specific origin, not true!
-    } else {
-      console.log('❌ CORS blocked origin:', origin);
-      return callback(new Error('Not allowed by CORS'), false);
-    }
-  },
-  credentials: true, // Enable credentials
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-  allowedHeaders: [
-    'Origin',
-    'X-Requested-With', 
-    'Content-Type',
-    'Accept',
-    'Authorization',
-    'Cache-Control',
-    'X-HTTP-Method-Override',
-  ],
-  optionsSuccessStatus: 200,
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      console.log('🔍 CORS request from origin:', origin);
+      console.log('🔍 Allowed origins:', allowedOrigins);
+
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        console.log('✅ Allowing request with no origin');
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        console.log('✅ Origin allowed:', origin);
+        return callback(null, origin); // Return the specific origin, not true!
+      } else {
+        console.log('❌ CORS blocked origin:', origin);
+        return callback(new Error('Not allowed by CORS'), false);
+      }
+    },
+    credentials: true, // Enable credentials
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Cache-Control',
+      'X-HTTP-Method-Override',
+    ],
+    optionsSuccessStatus: 200,
+  })
+);
 
 console.log('🔧 Using specific origin CORS for credentials support');
 
