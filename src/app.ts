@@ -31,18 +31,41 @@ const allowedOrigins = process.env.FRONTEND_URLS
 console.log('🌐 Allowed CORS origins:', allowedOrigins);
 console.log('🌐 Origins as JSON:', JSON.stringify(allowedOrigins));
 
-// Most permissive CORS setup for testing
+// CORS with specific origin for credentials support
 app.use(cors({
-  origin: "*", // Allow all origins
-  credentials: false, // Disable credentials to be maximally permissive
+  origin: function (origin, callback) {
+    console.log('🔍 CORS request from origin:', origin);
+    console.log('🔍 Allowed origins:', allowedOrigins);
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      console.log('✅ Allowing request with no origin');
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      console.log('✅ Origin allowed:', origin);
+      return callback(null, origin); // Return the specific origin, not true!
+    } else {
+      console.log('❌ CORS blocked origin:', origin);
+      return callback(new Error('Not allowed by CORS'), false);
+    }
+  },
+  credentials: true, // Enable credentials
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-  allowedHeaders: ['*'],
-  exposedHeaders: ['*'],
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With', 
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cache-Control',
+    'X-HTTP-Method-Override',
+  ],
   optionsSuccessStatus: 200,
-  preflightContinue: false,
 }));
 
-console.log('🚨 Using MAXIMALLY PERMISSIVE CORS for testing - this should work with any origin!');
+console.log('🔧 Using specific origin CORS for credentials support');
 
 // Handle preflight requests
 app.options('*', (req, res) => {
