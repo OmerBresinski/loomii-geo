@@ -208,6 +208,335 @@ const upsertCompany = async (name: string, domain: string) =>
   ).id;
 
 /**
+ * Run daily visibility job for a specific organization
+ */
+export async function runDailyVisibilityJobForOrganization(organizationId: string) {
+  console.log(`🚀 Starting daily visibility job for organization: ${organizationId}`);
+  
+  const companies = await prisma.company.findMany({
+    where: {
+      organizationId: organizationId
+    },
+    include: {
+      prompts: {
+        where: { isActive: true },
+        include: {
+          promptTags: {
+            include: { tag: true },
+          },
+        },
+      },
+    },
+  });
+  console.log(`Found ${companies.length} companies to process.`);
+
+  if (companies.length === 0) {
+    console.log('⚠️  No companies found for this organization');
+    return;
+  }
+
+  for (const company of companies) {
+    console.log(`\n🏢 Processing company: ${company.name}`);
+
+    // Parallelize prompt processing
+    const promptResults = await Promise.allSettled(
+      company.prompts.map(async prompt => {
+        const tagLabels = prompt.promptTags.map(pt => pt.tag.label).join(', ');
+        console.log(`  🏷️  Processing prompt (${tagLabels}): "${prompt.text}"`);
+
+        // Parallelize provider processing
+        const providerResults = await Promise.allSettled(
+          PROVIDERS.map(async provider => {
+            console.log(`    🤖 Using provider: ${provider.key}`);
+            // 0 · get the model's answer
+            console.log('        [1/4] Getting response from AI provider...');
+            const { text: answer, sources } = await provider.call(prompt.text);
+
+            console.log({ sources });
+
+            // 1 · extract companies + URLs
+            console.log('        [2/4] Extracting company mentions...');
+            const ext = await extractMentions(prompt.text, answer);
+            console.log(
+              `        Found ${ext.companyMentions.length} company mentions and ${sources.length} sources.`
+            );
+
+            // 2 · score sentiment per company
+            console.log('        [3/4] Scoring sentiments...');
+
+            // Remove duplicates based on name and domain combination
+            const uniqueCompanyMentions = ext.companyMentions.filter(
+              (mention, index, arr) =>
+                arr.findIndex(
+                  m => m.name === mention.name && m.domain === mention.domain
+                ) === index
+            );
+
+            const sent = await scoreSentiments(
+              answer,
+              uniqueCompanyMentions.map(({ name, domain }) => ({
+                name,
+                domain,
+              }))
+            );
+            const sentimentMap = new Map(
+              sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
+            );
+            console.log(`        Scored ${sent.sentiments.length} sentiments.`);
+
+            // 3 · persist PromptRun
+            console.log('        [4/4] Persisting data to database...');
+            const promptRun = await prisma.promptRun.create({
+              data: {
+                promptId: prompt.id,
+                providerId: await upsertProvider(provider.key),
+                responseRaw: answer,
+              },
+            });
+            console.log(`        Created PromptRun (ID: ${promptRun.id})`);
+
+            // Helper function to normalize domain (remove protocol, www, etc.)
+            const normalizeDomain = (domain: string): string => {
+              if (!domain) return '';
+              return domain
+                .toLowerCase()
+                .replace(/^https?:\/\//, '') // Remove protocol
+                .replace(/^www\./, '') // Remove www
+                .replace(/\/$/, ''); // Remove trailing slash
+            };
+
+            // 3.5 · save mention with all mentioned companies if current company is mentioned
+            const currentCompanyMentioned = uniqueCompanyMentions.find(m => {
+              if (!m.domain || !company.domain) {
+                // If no domain info, only match by exact name (be very cautious)
+                return m.name.toLowerCase() === company.name.toLowerCase();
+              }
+
+              // Normalize both domains for comparison
+              const normalizedMentionDomain = normalizeDomain(m.domain);
+              const normalizedCompanyDomain = normalizeDomain(company.domain);
+
+              // First try exact normalized domain match
+              if (normalizedMentionDomain === normalizedCompanyDomain) {
+                return true;
+              }
+
+              // If domains don't match, only allow name matching if they share the same base domain
+              if (m.name.toLowerCase() === company.name.toLowerCase()) {
+                // Extract base domain (e.g., "company.com" from "subdomain.company.com")
+                const getMentionBaseDomain = (domain: string): string => {
+                  const parts = domain.split('.');
+                  return parts.length >= 2 ? parts.slice(-2).join('.') : domain;
+                };
+
+                const mentionBaseDomain = getMentionBaseDomain(
+                  normalizedMentionDomain
+                );
+                const companyBaseDomain = getMentionBaseDomain(
+                  normalizedCompanyDomain
+                );
+
+                return mentionBaseDomain === companyBaseDomain;
+              }
+
+              return false;
+            });
+
+            if (currentCompanyMentioned) {
+              console.log(
+                `        🎯 AI response mentions current company: ${company.name} (${company.domain})`
+              );
+              console.log(
+                `        🔍 Matched mention: ${currentCompanyMentioned.name} (${currentCompanyMentioned.domain})`
+              );
+              console.log(
+                `        📋 Found ${uniqueCompanyMentions.length} total company mentions`
+              );
+
+              // Prepare all mentioned companies data for JSON storage
+              const mentionedCompaniesData = uniqueCompanyMentions.map(
+                mention => ({
+                  name: mention.name,
+                  domain: mention.domain,
+                })
+              );
+
+              await prisma.mention.create({
+                data: {
+                  promptId: prompt.id,
+                  content: answer,
+                  aiProviderId: await upsertProvider(provider.key),
+                  companyId: company.id,
+                  mentionedCompanies: mentionedCompaniesData,
+                },
+              });
+              console.log(
+                `        ✅ Saved mention for company: ${company.name} with ${mentionedCompaniesData.length} mentioned companies`
+              );
+            }
+
+            // 4 · persist mentions + sources
+            console.log(`        Processing ${sources.length} sources...`);
+
+            // Parallelize source processing
+            const sourceResults = await Promise.allSettled(
+              sources.map(async source => {
+                const url = source.url;
+                if (!url) return null;
+
+                const websiteNameResult = await extractWebsiteName(url);
+
+                const domain = new URL(url).hostname.replace(/^www\./, '');
+                const sourceId = (
+                  await prisma.source.upsert({
+                    where: { domain },
+                    create: { domain, name: websiteNameResult.websiteName },
+                    update: {},
+                  })
+                ).id;
+
+                const sourceUrlId = (
+                  await prisma.sourceUrl.upsert({
+                    where: { url },
+                    create: { url, sourceId },
+                    update: {},
+                  })
+                ).id;
+
+                return { url, sourceUrlId };
+              })
+            );
+
+            const sourceUrlIds: number[] = [];
+            sourceResults.forEach(result => {
+              if (result.status === 'fulfilled' && result.value) {
+                sourceUrlIds.push(result.value.sourceUrlId);
+              } else if (result.status === 'rejected') {
+                console.error('Source processing failed:', result.reason);
+              }
+            });
+
+            // Parallelize source page fetching
+            const sourcePageResults = await Promise.allSettled(
+              sources.map(async source => {
+                const sourcePage = await fetch(source.url);
+                const sourcePageText = await sourcePage.text();
+
+                console.log({ sourcePageText });
+
+                if (
+                  sourcePageText
+                    .toLowerCase()
+                    .includes(company.name.toLowerCase())
+                ) {
+                  return source.url;
+                }
+                return null;
+              })
+            );
+
+            const sourcesOfCompany: string[] = [];
+            sourcePageResults.forEach(result => {
+              if (result.status === 'fulfilled' && result.value) {
+                sourcesOfCompany.push(result.value);
+              } else if (result.status === 'rejected') {
+                console.error('Source page fetch failed:', result.reason);
+              }
+            });
+
+            // Parallelize company mention processing
+            await Promise.allSettled(
+              uniqueCompanyMentions.map(async m => {
+                const companyId = await upsertCompany(m.name, m.domain);
+                const sentiment = sentimentMap.get(m.domain) ?? 0;
+
+                console.log('Creating mention for', m.name, m.domain);
+
+                const companyMention = await prisma.companyMention.upsert({
+                  where: {
+                    promptRunId_companyId: {
+                      promptRunId: promptRun.id,
+                      companyId,
+                    },
+                  },
+                  update: {
+                    sentiment, // Update sentiment if it already exists
+                  },
+                  create: {
+                    promptRunId: promptRun.id,
+                    companyId,
+                    sentiment,
+                  },
+                });
+                console.log(
+                  `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
+                );
+
+                // Associate this company mention with all sources from this prompt run
+                await Promise.allSettled(
+                  sourcesOfCompany.map(async source => {
+                    const sourceUrl = await prisma.sourceUrl.findUnique({
+                      where: { url: source },
+                    });
+                    if (sourceUrl) {
+                      await prisma.mentionDetail.create({
+                        data: {
+                          promptRunId: promptRun.id,
+                          companyId,
+                          sourceUrlId: sourceUrl.id,
+                          count: 1, // presence flag
+                        },
+                      });
+                    }
+                  })
+                );
+              })
+            );
+            console.log(
+              `        Finished persisting data for prompt: "${prompt.text}" with provider: ${provider.key}`
+            );
+
+            return { provider: provider.key, success: true };
+          })
+        );
+
+        // Log provider results for this prompt
+        providerResults.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error(
+              `Provider ${PROVIDERS[index].key} failed for prompt "${prompt.text}":`,
+              result.reason
+            );
+          } else {
+            console.log(
+              `Provider ${result.value.provider} completed successfully for prompt "${prompt.text}"`
+            );
+          }
+        });
+
+        return { promptId: prompt.id, promptText: prompt.text, success: true };
+      })
+    );
+
+    // Log prompt results for this company
+    promptResults.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(
+          `Prompt "${company.prompts[index].text}" failed for company ${company.name}:`,
+          result.reason
+        );
+      } else {
+        console.log(
+          `Prompt "${result.value.promptText}" completed successfully for company ${company.name}`
+        );
+      }
+    });
+  }
+  
+  console.log('\n✅ Daily visibility job for organization finished successfully!');
+}
+
+/**
  *  Main cron – run daily (e.g. Vercel Cron 07:00 UTC)                   *
  * --------------------------------------------------------------------- */
 export async function runDailyVisibilityJob() {

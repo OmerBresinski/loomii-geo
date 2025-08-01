@@ -20,6 +20,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:daily": "tsx src/tests/dailyJob.ts",
+    "test:daily-org": "tsx src/tests/testDailyJobByOrg.ts",
     "test:analytics": "tsx src/tests/testAnalytics.ts",
     "test:competitors": "tsx src/tests/testCompetitors.ts",
     "test:sources": "tsx src/tests/testSources.ts",
