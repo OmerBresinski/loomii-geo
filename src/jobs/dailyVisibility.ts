@@ -111,6 +111,7 @@ async function extractMentions(
     RULES:
       • The JSON must parse with no extra keys, comments, or trailing commas.
       • Company domains should be the primary website of the company, clean format (e.g., "example.com" not "https://example.com/").
+      • Search the internet for the company domain if not directly provided (for example, the company Primis has a domain of primis.tech, and not primis.com).
       • Company domains should be the primary website of the company, not every source that talks about the company is the company's domain - only include the primary domain.
       • Omit the company completely if it is not actually mentioned in the RESPONSE.
     `,
@@ -227,16 +228,16 @@ export async function runDailyVisibilityJob() {
 
   for (const company of companies) {
     console.log(`\n🏢 Processing company: ${company.name}`);
-    
+
     // Parallelize prompt processing
     const promptResults = await Promise.allSettled(
-      company.prompts.map(async (prompt) => {
+      company.prompts.map(async prompt => {
         const tagLabels = prompt.promptTags.map(pt => pt.tag.label).join(', ');
         console.log(`  🏷️  Processing prompt (${tagLabels}): "${prompt.text}"`);
-        
+
         // Parallelize provider processing
         const providerResults = await Promise.allSettled(
-          PROVIDERS.map(async (provider) => {
+          PROVIDERS.map(async provider => {
             console.log(`    🤖 Using provider: ${provider.key}`);
             // 0 · get the model's answer
             console.log('        [1/4] Getting response from AI provider...');
@@ -264,7 +265,10 @@ export async function runDailyVisibilityJob() {
 
             const sent = await scoreSentiments(
               answer,
-              uniqueCompanyMentions.map(({ name, domain }) => ({ name, domain }))
+              uniqueCompanyMentions.map(({ name, domain }) => ({
+                name,
+                domain,
+              }))
             );
             const sentimentMap = new Map(
               sent.sentiments.map(s => [s.domain || s.name, s.sentiment])
@@ -285,58 +289,69 @@ export async function runDailyVisibilityJob() {
             // Helper function to normalize domain (remove protocol, www, etc.)
             const normalizeDomain = (domain: string): string => {
               if (!domain) return '';
-              return domain.toLowerCase()
+              return domain
+                .toLowerCase()
                 .replace(/^https?:\/\//, '') // Remove protocol
-                .replace(/^www\./, '')       // Remove www
-                .replace(/\/$/, '');         // Remove trailing slash
+                .replace(/^www\./, '') // Remove www
+                .replace(/\/$/, ''); // Remove trailing slash
             };
 
             // 3.5 · save mention with all mentioned companies if current company is mentioned
-            const currentCompanyMentioned = uniqueCompanyMentions.find(
-              m => {
-                if (!m.domain || !company.domain) {
-                  // If no domain info, only match by exact name (be very cautious)
-                  return m.name.toLowerCase() === company.name.toLowerCase();
-                }
-
-                // Normalize both domains for comparison
-                const normalizedMentionDomain = normalizeDomain(m.domain);
-                const normalizedCompanyDomain = normalizeDomain(company.domain);
-                
-                // First try exact normalized domain match
-                if (normalizedMentionDomain === normalizedCompanyDomain) {
-                  return true;
-                }
-                
-                // If domains don't match, only allow name matching if they share the same base domain
-                if (m.name.toLowerCase() === company.name.toLowerCase()) {
-                  // Extract base domain (e.g., "company.com" from "subdomain.company.com")
-                  const getMentionBaseDomain = (domain: string): string => {
-                    const parts = domain.split('.');
-                    return parts.length >= 2 ? parts.slice(-2).join('.') : domain;
-                  };
-                  
-                  const mentionBaseDomain = getMentionBaseDomain(normalizedMentionDomain);
-                  const companyBaseDomain = getMentionBaseDomain(normalizedCompanyDomain);
-                  
-                  return mentionBaseDomain === companyBaseDomain;
-                }
-                
-                return false;
+            const currentCompanyMentioned = uniqueCompanyMentions.find(m => {
+              if (!m.domain || !company.domain) {
+                // If no domain info, only match by exact name (be very cautious)
+                return m.name.toLowerCase() === company.name.toLowerCase();
               }
-            );
-            
+
+              // Normalize both domains for comparison
+              const normalizedMentionDomain = normalizeDomain(m.domain);
+              const normalizedCompanyDomain = normalizeDomain(company.domain);
+
+              // First try exact normalized domain match
+              if (normalizedMentionDomain === normalizedCompanyDomain) {
+                return true;
+              }
+
+              // If domains don't match, only allow name matching if they share the same base domain
+              if (m.name.toLowerCase() === company.name.toLowerCase()) {
+                // Extract base domain (e.g., "company.com" from "subdomain.company.com")
+                const getMentionBaseDomain = (domain: string): string => {
+                  const parts = domain.split('.');
+                  return parts.length >= 2 ? parts.slice(-2).join('.') : domain;
+                };
+
+                const mentionBaseDomain = getMentionBaseDomain(
+                  normalizedMentionDomain
+                );
+                const companyBaseDomain = getMentionBaseDomain(
+                  normalizedCompanyDomain
+                );
+
+                return mentionBaseDomain === companyBaseDomain;
+              }
+
+              return false;
+            });
+
             if (currentCompanyMentioned) {
-              console.log(`        🎯 AI response mentions current company: ${company.name} (${company.domain})`);
-              console.log(`        🔍 Matched mention: ${currentCompanyMentioned.name} (${currentCompanyMentioned.domain})`);
-              console.log(`        📋 Found ${uniqueCompanyMentions.length} total company mentions`);
-              
+              console.log(
+                `        🎯 AI response mentions current company: ${company.name} (${company.domain})`
+              );
+              console.log(
+                `        🔍 Matched mention: ${currentCompanyMentioned.name} (${currentCompanyMentioned.domain})`
+              );
+              console.log(
+                `        📋 Found ${uniqueCompanyMentions.length} total company mentions`
+              );
+
               // Prepare all mentioned companies data for JSON storage
-              const mentionedCompaniesData = uniqueCompanyMentions.map(mention => ({
-                name: mention.name,
-                domain: mention.domain
-              }));
-              
+              const mentionedCompaniesData = uniqueCompanyMentions.map(
+                mention => ({
+                  name: mention.name,
+                  domain: mention.domain,
+                })
+              );
+
               await prisma.mention.create({
                 data: {
                   promptId: prompt.id,
@@ -346,7 +361,9 @@ export async function runDailyVisibilityJob() {
                   mentionedCompanies: mentionedCompaniesData,
                 },
               });
-              console.log(`        ✅ Saved mention for company: ${company.name} with ${mentionedCompaniesData.length} mentioned companies`);
+              console.log(
+                `        ✅ Saved mention for company: ${company.name} with ${mentionedCompaniesData.length} mentioned companies`
+              );
             }
 
             // 4 · persist mentions + sources
@@ -354,7 +371,7 @@ export async function runDailyVisibilityJob() {
 
             // Parallelize source processing
             const sourceResults = await Promise.allSettled(
-              sources.map(async (source) => {
+              sources.map(async source => {
                 const url = source.url;
                 if (!url) return null;
 
@@ -392,14 +409,16 @@ export async function runDailyVisibilityJob() {
 
             // Parallelize source page fetching
             const sourcePageResults = await Promise.allSettled(
-              sources.map(async (source) => {
+              sources.map(async source => {
                 const sourcePage = await fetch(source.url);
                 const sourcePageText = await sourcePage.text();
 
                 console.log({ sourcePageText });
 
                 if (
-                  sourcePageText.toLowerCase().includes(company.name.toLowerCase())
+                  sourcePageText
+                    .toLowerCase()
+                    .includes(company.name.toLowerCase())
                 ) {
                   return source.url;
                 }
@@ -418,7 +437,7 @@ export async function runDailyVisibilityJob() {
 
             // Parallelize company mention processing
             await Promise.allSettled(
-              uniqueCompanyMentions.map(async (m) => {
+              uniqueCompanyMentions.map(async m => {
                 const companyId = await upsertCompany(m.name, m.domain);
                 const sentiment = sentimentMap.get(m.domain) ?? 0;
 
@@ -446,7 +465,7 @@ export async function runDailyVisibilityJob() {
 
                 // Associate this company mention with all sources from this prompt run
                 await Promise.allSettled(
-                  sourcesOfCompany.map(async (source) => {
+                  sourcesOfCompany.map(async source => {
                     const sourceUrl = await prisma.sourceUrl.findUnique({
                       where: { url: source },
                     });
@@ -475,9 +494,14 @@ export async function runDailyVisibilityJob() {
         // Log provider results for this prompt
         providerResults.forEach((result, index) => {
           if (result.status === 'rejected') {
-            console.error(`Provider ${PROVIDERS[index].key} failed for prompt "${prompt.text}":`, result.reason);
+            console.error(
+              `Provider ${PROVIDERS[index].key} failed for prompt "${prompt.text}":`,
+              result.reason
+            );
           } else {
-            console.log(`Provider ${result.value.provider} completed successfully for prompt "${prompt.text}"`);
+            console.log(
+              `Provider ${result.value.provider} completed successfully for prompt "${prompt.text}"`
+            );
           }
         });
 
@@ -488,9 +512,14 @@ export async function runDailyVisibilityJob() {
     // Log prompt results for this company
     promptResults.forEach((result, index) => {
       if (result.status === 'rejected') {
-        console.error(`Prompt "${company.prompts[index].text}" failed for company ${company.name}:`, result.reason);
+        console.error(
+          `Prompt "${company.prompts[index].text}" failed for company ${company.name}:`,
+          result.reason
+        );
       } else {
-        console.log(`Prompt "${result.value.promptText}" completed successfully for company ${company.name}`);
+        console.log(
+          `Prompt "${result.value.promptText}" completed successfully for company ${company.name}`
+        );
       }
     });
   }
