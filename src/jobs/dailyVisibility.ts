@@ -18,7 +18,7 @@ const PROVIDERS = [
   {
     key: 'gemini-2.5-pro',
     call: async (prompt: string) => {
-      const { text, sources, providerMetadata } = await generateText({
+      const { text, sources } = await generateText({
         model: google('gemini-2.5-pro', {
           useSearchGrounding: true,
         }),
@@ -26,8 +26,6 @@ const PROVIDERS = [
         temperature: 0.3,
         maxTokens: 2048,
       });
-
-      console.log({ metaData: JSON.stringify(providerMetadata, null, 2) });
 
       const fullSources = [];
 
@@ -74,59 +72,402 @@ const SentimentSchema = z.object({
 });
 type Sentiment = z.infer<typeof SentimentSchema>;
 
-async function extractMentions(
+// Step 1: Extract company genre/category from the discussion
+async function extractCompanyGenre(
   prompt: string,
   answer: string
-): Promise<Extraction> {
-  const { object } = await generateObject({
-    schema: ExtractionSchema,
-    model: google('gemini-2.5-flash'),
-    system: `
-    You are a company name & domain extraction engine.
-
-    INPUT:
-      • PROMPT   – the user's original question to the AI
-      • RESPONSE – the AI's full answer (may include citations, inline links, footnotes, or plain-text references)
-
-    TASK:
-      0. (optional) Translate the RESPONSE to English if it's not already in English.
-      1. Identify **every company or product** that the RESPONSE discusses in any way
-        (including the user's own company, competitors, partners, etc.) - BESIDES if it doesnt make sense, for example: If the user asks about the best Salesforce partner, then ignore Salesforce.
-      2. For each company return:
-          • name      → canonical brand / company / product name
-          • domain    → primary web domain of the company (without http://, https://, or trailing slashes)
-      3. **Do NOT** add sentiment or visibility numbers here.
-      4. Return **strictly valid JSON** in this exact shape:
-
-        {
-          "companyMentions": [
-            {
-              "name": "...",
-              "domain": "..."
-            },
-            ...
-          ]
-        }
-
-    RULES:
-      • The JSON must parse with no extra keys, comments, or trailing commas.
-      • Company domains should be the primary website of the company, clean format (e.g., "example.com" not "https://example.com/").
-      • Search the internet for the company domain if not directly provided (for example, the company Primis has a domain of primis.tech, and not primis.com).
-      • Company domains should be the primary website of the company, not every source that talks about the company is the company's domain - only include the primary domain.
-      • Omit the company completely if it is not actually mentioned in the RESPONSE.
-    `,
-    prompt: `PROMPT:\n${prompt}\n\nRESPONSE:\n${answer}`,
+): Promise<string> {
+  const GenreExtractionSchema = z.object({
+    genre: z
+      .string()
+      .describe(
+        "Category/type of companies discussed (e.g., 'CRM software companies', 'design agencies in Israel')"
+      ),
   });
 
-  // Clean up domains in the extracted mentions
-  const cleanedMentions = {
-    companyMentions: object.companyMentions.map(mention => ({
-      ...mention,
-      domain: cleanDomain(mention.domain),
-    })),
-  };
+  const { object } = await generateObject({
+    schema: GenreExtractionSchema,
+    model: google('gemini-2.5-flash', { useSearchGrounding: true }),
+    system: `Based on the prompt and response, identify what category/genre of companies is being discussed.
 
-  return cleanedMentions;
+Examples of good genres:
+- "CRM software companies"  
+- "design agencies in Israel"
+- "crypto companies in the UK"
+- "AI startups in San Francisco"
+- "e-commerce platforms"
+- "healthcare technology companies"
+
+Be specific about industry and location if mentioned. This will be used to help identify official company domains.`,
+    prompt: `PROMPT: ${prompt}
+
+RESPONSE: ${answer}
+
+What category/genre of companies is being discussed?`,
+  });
+
+  console.log(`🎯 Extracted genre: ${object.genre}`);
+  return object.genre;
+}
+
+// Step 2: Extract company names only (no domains) with filtering and Hebrew translation
+async function extractCompanyNamesOnly(
+  prompt: string,
+  answer: string
+): Promise<string[]> {
+  const CompanyNamesSchema = z.object({
+    companies: z.array(
+      z.object({
+        name: z.string().describe('Company name in English (translated if originally in Hebrew)'),
+      })
+    ),
+  });
+
+  const { object } = await generateObject({
+    schema: CompanyNamesSchema,
+    model: google('gemini-2.5-flash'),
+    system: `Extract ONLY the company names mentioned in this response. 
+
+RULES:
+- Do NOT include domains, websites, or URLs
+- Do NOT make up or guess company names
+- Only include companies actually mentioned in the RESPONSE
+- If a company name is in Hebrew, translate it to English (transliterate proper names phonetically)
+- Return company names in English only, suitable for domain matching
+- Ignore generic references (e.g., don't include "Salesforce" if the question is about "best Salesforce partners")
+
+NEVER EXTRACT THESE COMPANIES (always exclude):
+- Google
+- Apple  
+- Facebook
+- Meta
+- Microsoft
+- Amazon
+- YouTube
+- Instagram
+- WhatsApp
+- Alphabet
+
+HEBREW TRANSLATION EXAMPLES:
+- "טכנולוגיות חדשות" → "New Technologies"
+- "פריס" → "Primis" 
+- "אלפא" → "Alpha"
+
+Focus on smaller, specific companies that are actual competitors or alternatives in the space being discussed.`,
+    prompt: `PROMPT: ${prompt}
+
+RESPONSE: ${answer}
+
+Extract only the company names mentioned (excluding the forbidden companies listed above). Translate any Hebrew names to English.`,
+  });
+
+  console.log(
+    `📝 Extracted ${object.companies.length} company names: ${object.companies.map(c => c.name).join(', ')}`
+  );
+  return object.companies.map(c => c.name).filter(name => name.trim() !== '');
+}
+
+// Helper function to verify if a domain exists
+async function verifyDomainExists(domain: string): Promise<boolean> {
+  try {
+    const response = await fetch(`https://${domain}`, {
+      method: 'HEAD',
+    });
+    return response.ok || response.status === 301 || response.status === 302;
+  } catch (error) {
+    return false;
+  }
+}
+
+
+// Strategy 1: Extract domains from existing sources
+async function findDomainFromSources(
+  companyName: string,
+  sources: { url: string }[]
+): Promise<string | null> {
+  console.log(`    🔍 [1/3] Checking sources for ${companyName}...`);
+
+  for (const source of sources) {
+    try {
+      const url = new URL(source.url);
+      const hostname = url.hostname.replace(/^www\./, '');
+
+      // Extract just the main domain name (e.g., "hubspot" from "hubspot.com")
+      const domainParts = hostname.split('.');
+      if (domainParts.length < 2) continue; // Skip invalid domains
+
+      // Get the main domain name (excluding TLD and subdomains)
+      // For "app.hubspot.com" this would be "hubspot"
+      // For "techcrunch.com" this would be "techcrunch"
+      const mainDomainName = domainParts[domainParts.length - 2];
+
+      // Clean company name for comparison
+      const cleanCompanyName = companyName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+      const cleanMainDomain = mainDomainName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+
+      // Only match if the main domain name matches the company name
+      if (cleanMainDomain === cleanCompanyName && cleanCompanyName.length > 2) {
+        console.log(`    ✅ Found potential domain from sources: ${hostname}`);
+
+        // Verify domain exists
+        if (await verifyDomainExists(hostname)) {
+          console.log(`    ✅ Domain verified: ${hostname}`);
+          return hostname;
+        } else {
+          console.log(`    ❌ Domain verification failed: ${hostname}`);
+        }
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  console.log(`    ❌ No domain found in sources for ${companyName}`);
+  return null;
+}
+
+// Strategy 2: AI-powered domain lookup with verification
+async function findDomainWithAI(
+  companyName: string,
+  genre: string
+): Promise<string | null> {
+  console.log(`    🤖 [2/3] AI domain lookup for ${companyName}...`);
+
+  const DomainLookupSchema = z.object({
+    domain: z
+      .string()
+      .nullable()
+      .describe(
+        "Official company domain (e.g., 'company.com') or null if not found"
+      ),
+  });
+
+  try {
+    const { object } = await generateObject({
+      schema: DomainLookupSchema,
+      model: google('gemini-2.5-flash', { useSearchGrounding: true }),
+      system: `Find the official website domain for a specific company.
+
+REQUIREMENTS:
+- Return ONLY the domain (e.g., "company.com", "startup.ai")  
+- Do NOT include "https://", "http://", or "www."
+- Return null if you cannot find a reliable official domain
+- Do NOT guess or make up domains
+- Verify this is the official company website, not a news article about them
+- Use the company category context to disambiguate between companies with similar names`,
+      prompt: `Company: ${companyName}
+Category: ${genre}
+
+What is the official website domain for this company? Search the web to verify the correct domain.`,
+    });
+
+    if (!object.domain) {
+      console.log(`    ❌ AI could not find domain for ${companyName}`);
+      return null;
+    }
+
+    const cleanedDomain = cleanDomain(object.domain);
+    console.log(`    🔍 AI suggested domain: ${cleanedDomain}`);
+
+    // Verify the domain exists
+    if (await verifyDomainExists(cleanedDomain)) {
+      console.log(`    ✅ AI domain verified: ${cleanedDomain}`);
+      return cleanedDomain;
+    } else {
+      console.log(`    ❌ AI domain verification failed: ${cleanedDomain}`);
+      return null;
+    }
+  } catch (error) {
+    console.log(`    ❌ AI domain lookup failed for ${companyName}:`, error);
+    return null;
+  }
+}
+
+// Strategy 3: Search inside source page content for domains
+async function findDomainFromSourceContent(
+  companyName: string,
+  sources: { url: string }[]
+): Promise<string | null> {
+  console.log(
+    `    📄 [3/3] Searching source page content for ${companyName}...`
+  );
+
+  for (const source of sources) {
+    try {
+      console.log(`      🔍 Fetching content from: ${source.url}`);
+      const response = await fetch(source.url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000), // 5 second timeout
+      });
+
+      if (!response.ok) {
+        console.log(
+          `      ❌ Failed to fetch ${source.url}: ${response.status}`
+        );
+        continue;
+      }
+
+      const content = await response.text();
+
+      // Extract potential domains from the content
+      // Look for patterns like company.com, company.io, etc.
+      const cleanCompanyName = companyName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+
+      // Common domain patterns
+      const domainPatterns = [
+        new RegExp(
+          `\\b${cleanCompanyName}\\.(com|io|net|org|co|ai|tech|app|dev)\\b`,
+          'gi'
+        ),
+        new RegExp(
+          `\\bhttps?:\\/\\/(www\\.)?${cleanCompanyName}\\.(com|io|net|org|co|ai|tech|app|dev)`,
+          'gi'
+        ),
+        new RegExp(`\\b${cleanCompanyName}\\.(co\\.[a-z]{2})\\b`, 'gi'), // co.uk, co.il, etc.
+      ];
+
+      const foundDomains = new Set<string>();
+
+      for (const pattern of domainPatterns) {
+        const matches = content.match(pattern);
+        if (matches) {
+          matches.forEach(match => {
+            // Clean the matched domain
+            let domain = match
+              .replace(/^https?:\/\/(www\.)?/, '') // Remove protocol and www
+              .replace(/[^\w.-]/g, '') // Remove any non-domain characters
+              .toLowerCase();
+
+            if (domain && domain.includes('.') && domain.length > 4) {
+              foundDomains.add(domain);
+            }
+          });
+        }
+      }
+
+      if (foundDomains.size > 0) {
+        console.log(
+          `      🎯 Found potential domains: ${Array.from(foundDomains).join(', ')}`
+        );
+
+        // Verify each found domain
+        for (const domain of foundDomains) {
+          console.log(`      🔍 Verifying domain: ${domain}`);
+          if (await verifyDomainExists(domain)) {
+            console.log(
+              `      ✅ Domain verified from source content: ${domain}`
+            );
+            return domain;
+          } else {
+            console.log(`      ❌ Domain verification failed: ${domain}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.log(
+        `      ❌ Error fetching source content from ${source.url}:`,
+        error
+      );
+      continue;
+    }
+  }
+
+  console.log(
+    `    ❌ No verified domain found in source content for ${companyName}`
+  );
+  return null;
+}
+
+// Main domain finder function
+async function findOfficialDomain(
+  companyName: string,
+  genre: string,
+  sources: { url: string }[] = []
+): Promise<string | null> {
+  console.log(`  🔍 Finding domain for: ${companyName}`);
+
+  // Strategy 1: Check existing sources first
+  const sourceDomain = await findDomainFromSources(companyName, sources);
+  if (sourceDomain) {
+    return sourceDomain;
+  }
+
+  // Strategy 2: AI-powered lookup with verification
+  const aiDomain = await findDomainWithAI(companyName, genre);
+  if (aiDomain) {
+    return aiDomain;
+  }
+
+  // Strategy 3: Search inside source page content
+  const contentDomain = await findDomainFromSourceContent(companyName, sources);
+  if (contentDomain) {
+    return contentDomain;
+  }
+
+  // Fallback: Use company name + .com (no verification needed)
+  console.log(
+    `    🎯 [Fallback] Using company name + .com for: ${companyName}`
+  );
+
+  const cleanCompanyName = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // Safety check: if cleaning results in empty string, use "company" as fallback
+  const safeName = cleanCompanyName || 'company';
+  const fallbackDomain = `${safeName}.com`;
+  console.log(`    📝 Fallback domain: ${fallbackDomain}`);
+
+  return fallbackDomain;
+}
+
+async function extractMentions(
+  prompt: string,
+  answer: string,
+  sources: { url: string }[] = []
+): Promise<Extraction> {
+  console.log('🎯 [1/3] Extracting company genre...');
+  const genre = await extractCompanyGenre(prompt, answer);
+
+  console.log('📝 [2/3] Extracting company names (with Hebrew translation)...');
+  const companyNames = await extractCompanyNamesOnly(prompt, answer);
+
+  if (companyNames.length === 0) {
+    console.log('    No companies found, returning empty result');
+    return { companyMentions: [] };
+  }
+
+  // Filter out empty company names
+  const validCompanyNames = companyNames.filter(name => name && name.trim() !== '');
+  
+  if (validCompanyNames.length !== companyNames.length) {
+    console.log(`  ⚠️  Filtered out ${companyNames.length - validCompanyNames.length} empty company names`);
+  }
+
+  console.log('🔍 [3/3] Finding and verifying domains...');
+
+  // Find domains for each company sequentially (with verification)
+  const companyMentions: { name: string; domain: string }[] = [];
+
+  for (const companyName of validCompanyNames) {
+    const domain = await findOfficialDomain(companyName, genre, sources);
+    if (domain) {
+      companyMentions.push({
+        name: companyName,
+        domain: domain,
+      });
+    }
+  }
+
+  console.log(
+    `✅ Successfully found and verified ${companyMentions.length}/${validCompanyNames.length} company domains`
+  );
+
+  return { companyMentions };
 }
 
 async function scoreSentiments(
@@ -210,12 +551,16 @@ const upsertCompany = async (name: string, domain: string) =>
 /**
  * Run daily visibility job for a specific organization
  */
-export async function runDailyVisibilityJobForOrganization(organizationId: string) {
-  console.log(`🚀 Starting daily visibility job for organization: ${organizationId}`);
-  
+export async function runDailyVisibilityJobForOrganization(
+  organizationId: string
+) {
+  console.log(
+    `🚀 Starting daily visibility job for organization: ${organizationId}`
+  );
+
   const companies = await prisma.company.findMany({
     where: {
-      organizationId: organizationId
+      organizationId: organizationId,
     },
     include: {
       prompts: {
@@ -256,7 +601,7 @@ export async function runDailyVisibilityJobForOrganization(organizationId: strin
 
             // 1 · extract companies + URLs
             console.log('        [2/4] Extracting company mentions...');
-            const ext = await extractMentions(prompt.text, answer);
+            const ext = await extractMentions(prompt.text, answer, sources);
             console.log(
               `        Found ${ext.companyMentions.length} company mentions and ${sources.length} sources.`
             );
@@ -422,8 +767,6 @@ export async function runDailyVisibilityJobForOrganization(organizationId: strin
                 const sourcePage = await fetch(source.url);
                 const sourcePageText = await sourcePage.text();
 
-                console.log({ sourcePageText });
-
                 if (
                   sourcePageText
                     .toLowerCase()
@@ -532,8 +875,10 @@ export async function runDailyVisibilityJobForOrganization(organizationId: strin
       }
     });
   }
-  
-  console.log('\n✅ Daily visibility job for organization finished successfully!');
+
+  console.log(
+    '\n✅ Daily visibility job for organization finished successfully!'
+  );
 }
 
 /**
@@ -576,7 +921,7 @@ export async function runDailyVisibilityJob() {
 
             // 1 · extract companies + URLs
             console.log('        [2/4] Extracting company mentions...');
-            const ext = await extractMentions(prompt.text, answer);
+            const ext = await extractMentions(prompt.text, answer, sources);
             console.log(
               `        Found ${ext.companyMentions.length} company mentions and ${sources.length} sources.`
             );
