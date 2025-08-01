@@ -78,7 +78,7 @@ export async function deleteOrganization(organizationId: string): Promise<void> 
       });
       console.log(`    Deleted ${mentionsDeleted.count} mentions`);
 
-      // 4. Get all prompts for this company to delete related data
+      // 4. Get all prompts and prompt runs for this company to delete related data
       const prompts = await tx.prompt.findMany({
         where: { companyId },
         select: { id: true },
@@ -88,15 +88,40 @@ export async function deleteOrganization(organizationId: string): Promise<void> 
       if (prompts.length > 0) {
         const promptIds = prompts.map(p => p.id);
 
-        // 4a. Delete PromptRun records
-        console.log('🗑️  [4/9] Deleting prompt runs...');
+        // Get all prompt runs for these prompts
+        const promptRuns = await tx.promptRun.findMany({
+          where: { promptId: { in: promptIds } },
+          select: { id: true },
+        });
+        console.log(`📋 Found ${promptRuns.length} prompt runs to process`);
+
+        if (promptRuns.length > 0) {
+          const promptRunIds = promptRuns.map(pr => pr.id);
+
+          // 4a. Delete CompanyMention records for these prompt runs (must come before PromptRun deletion)
+          console.log('🗑️  [4/9] Deleting company mentions for prompt runs...');
+          const additionalCompanyMentionsDeleted = await tx.companyMention.deleteMany({
+            where: { promptRunId: { in: promptRunIds } },
+          });
+          console.log(`    Deleted ${additionalCompanyMentionsDeleted.count} additional company mentions`);
+
+          // 4b. Delete MentionDetail records for these prompt runs
+          console.log('🗑️  [5/9] Deleting mention details for prompt runs...');
+          const additionalMentionDetailsDeleted = await tx.mentionDetail.deleteMany({
+            where: { promptRunId: { in: promptRunIds } },
+          });
+          console.log(`    Deleted ${additionalMentionDetailsDeleted.count} additional mention details`);
+        }
+
+        // 4c. Delete PromptRun records (now safe after deleting referencing records)
+        console.log('🗑️  [6/9] Deleting prompt runs...');
         const promptRunsDeleted = await tx.promptRun.deleteMany({
           where: { promptId: { in: promptIds } },
         });
         console.log(`    Deleted ${promptRunsDeleted.count} prompt runs`);
 
-        // 4b. Delete PromptTag records
-        console.log('🗑️  [5/9] Deleting prompt tags...');
+        // 4d. Delete PromptTag records
+        console.log('🗑️  [7/9] Deleting prompt tags...');
         const promptTagsDeleted = await tx.promptTag.deleteMany({
           where: { promptId: { in: promptIds } },
         });
@@ -104,28 +129,28 @@ export async function deleteOrganization(organizationId: string): Promise<void> 
       }
 
       // 5. Delete Prompt records
-      console.log('🗑️  [6/9] Deleting prompts...');
+      console.log('🗑️  [8/11] Deleting prompts...');
       const promptsDeleted = await tx.prompt.deleteMany({
         where: { companyId },
       });
       console.log(`    Deleted ${promptsDeleted.count} prompts`);
 
       // 6. Delete Company record
-      console.log('🗑️  [7/9] Deleting company...');
+      console.log('🗑️  [9/11] Deleting company...');
       await tx.company.delete({
         where: { id: companyId },
       });
-      console.log(`    Deleted company: ${organization.company.name}`);
+      console.log(`    Deleted company: ${organization.company!.name}`);
 
       // 7. Delete User records
-      console.log('🗑️  [8/9] Deleting users...');
+      console.log('🗑️  [10/11] Deleting users...');
       const usersDeleted = await tx.user.deleteMany({
         where: { organizationId },
       });
       console.log(`    Deleted ${usersDeleted.count} users`);
 
       // 8. Delete Organization record
-      console.log('🗑️  [9/9] Deleting organization...');
+      console.log('🗑️  [11/11] Deleting organization...');
       await tx.organization.delete({
         where: { id: organizationId },
       });

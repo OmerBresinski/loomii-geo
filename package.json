@@ -28,7 +28,8 @@
     "seed:tags": "tsx src/utils/seedTags.ts",
     "seed:first-user": "tsx src/utils/seedFirstUser.ts",
     "seed:prompts": "tsx src/utils/seedPrompts.ts",
-    "migrate:dates": "tsx src/utils/migratePromptRunDates.ts"
+    "migrate:dates": "tsx src/utils/migratePromptRunDates.ts",
+    "delete:organization": "tsx src/utils/deleteOrganization.ts"
   },
   "keywords": [
     "express",
