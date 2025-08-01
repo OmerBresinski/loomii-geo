@@ -6,6 +6,7 @@ import { healthRouter } from './health';
 import { userRouter } from './user';
 import { publicRouter } from './public';
 import { mentionsRouter } from './mentions';
+import { dashboardRouter } from './dashboard';
 import authRouter from './auth';
 
 const router = Router();
@@ -21,5 +22,6 @@ router.use('/competitors', competitorsRouter);
 router.use('/sources', sourcesRouter);
 router.use('/user', userRouter);
 router.use('/mentions', mentionsRouter);
+router.use('/dashboard', dashboardRouter);
 
 export default router;
