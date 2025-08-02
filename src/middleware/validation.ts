@@ -12,7 +12,7 @@ export const validate = (schema: z.ZodSchema) => {
       });
 
       if (!result.success) {
-        const errorMessages = result.error.errors.map(
+        const errorMessages = result.error.issues.map(
           err => `${err.path.join('.')}: ${err.message}`
         );
         throw new ValidationError(
@@ -21,9 +21,10 @@ export const validate = (schema: z.ZodSchema) => {
       }
 
       // Attach validated data to request
-      req.body = result.data.body || req.body;
-      req.query = result.data.query || req.query;
-      req.params = result.data.params || req.params;
+      const validatedData = result.data as any;
+      req.body = validatedData.body || req.body;
+      req.query = validatedData.query || req.query;
+      req.params = validatedData.params || req.params;
 
       next();
     } catch (error) {

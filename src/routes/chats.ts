@@ -190,7 +190,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({
         success: false,
         error: 'Invalid query parameters',
-        details: error.errors
+        details: error.issues
       });
       return;
     }

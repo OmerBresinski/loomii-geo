@@ -1,7 +1,8 @@
-import { object, z } from 'zod';
+import { z } from 'zod';
 import { generateText, generateObject } from 'ai';
-// import { openai } from '@ai-sdk/openai';
+import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
+import { perplexity } from '@ai-sdk/perplexity';
 import { prisma } from '@/utils/database';
 
 const genericSchema = z.object({
@@ -19,27 +20,35 @@ const PROVIDERS = [
     key: 'gemini-2.5-pro',
     call: async (prompt: string) => {
       const { text, sources } = await generateText({
-        model: google('gemini-2.5-pro', {
-          useSearchGrounding: true,
-        }),
+        model: google('gemini-2.5-pro'),
+        tools: {
+          google_search: google.tools.googleSearch({}),
+        },
         prompt,
         temperature: 0.3,
-        maxTokens: 2048,
+        maxRetries: 3,
       });
 
       const fullSources = [];
 
-      for (const source of sources) {
-        try {
-          const response = await fetch(source.url, {
-            method: 'HEAD',
-            signal: AbortSignal.timeout(1500), // 5 second timeout
-          });
-          const url = response.url;
-          fullSources.push({ url });
-        } catch (e) {
-          console.log('Link fetch error', source.url);
-          continue;
+      // Sources might not be available in AI SDK v5
+      if (sources && Array.isArray(sources)) {
+        for (const source of sources) {
+          try {
+            // Check if source has url property
+            const sourceUrl = (source as any).url;
+            if (sourceUrl) {
+              const response = await fetch(sourceUrl, {
+                method: 'HEAD',
+                signal: AbortSignal.timeout(1500), // 5 second timeout
+              });
+              const url = response.url;
+              fullSources.push({ url });
+            }
+          } catch (e) {
+            console.log('Link fetch error', (source as any).url);
+            continue;
+          }
         }
       }
 
@@ -85,9 +94,9 @@ async function extractCompanyGenre(
       ),
   });
 
-  const { object } = await generateObject({
+  const result = await generateObject({
     schema: GenreExtractionSchema,
-    model: google('gemini-2.5-flash', { useSearchGrounding: true }),
+    model: google('gemini-2.5-flash'),
     system: `Based on the prompt and response, identify what category/genre of companies is being discussed.
 
 Examples of good genres:
@@ -106,8 +115,8 @@ RESPONSE: ${answer}
 What category/genre of companies is being discussed?`,
   });
 
-  console.log(`🎯 Extracted genre: ${object.genre}`);
-  return object.genre;
+  console.log(`🎯 Extracted genre: ${result.object.genre}`);
+  return result.object.genre;
 }
 
 // Step 2: Extract company names only (no domains) with filtering and Hebrew translation
@@ -127,7 +136,7 @@ async function extractCompanyNamesOnly(
     ),
   });
 
-  const { object } = await generateObject({
+  const companyResult = await generateObject({
     schema: CompanyNamesSchema,
     model: google('gemini-2.5-flash'),
     temperature: 0.1, // Lower temperature for more consistent results
@@ -208,9 +217,11 @@ Now extract ALL company names mentioned in the AI response above. Scan thoroughl
   });
 
   console.log(
-    `📝 Extracted ${object.companies.length} company names: ${object.companies.map(c => c.name).join(', ')}`
+    `📝 Extracted ${companyResult.object.companies.length} company names: ${companyResult.object.companies.map(c => c.name).join(', ')}`
   );
-  return object.companies.map(c => c.name).filter(name => name.trim() !== '');
+  return companyResult.object.companies
+    .map(c => c.name)
+    .filter(name => name.trim() !== '');
 }
 
 // Helper function to verify if a domain exists
@@ -292,40 +303,21 @@ async function findDomainWithAI(
   });
 
   try {
-    const { object } = await generateObject({
+    const domainResult = await generateObject({
       schema: DomainLookupSchema,
-      model: google('gemini-2.5-flash', { useSearchGrounding: true }),
-      system: `Find the official website domain for a specific company.
-
-REQUIREMENTS:
-- Return ONLY the domain (e.g., "company.com", "startup.ai")  
-- Do NOT include "https://", "http://", or "www."
-- Return null if you cannot find a reliable official domain
-- Do NOT guess or make up domains
-- Verify this is the official company website, not a news article about them
-- Use the company category context to disambiguate between companies with similar names`,
-      prompt: `Company: ${companyName}
-Category: ${genre}
-
-What is the official website domain for this company? Search the web to verify the correct domain.`,
+      model: perplexity('sonar'),
+      system: `You are an expert domain lookup engine for companies, universities, and organizations`,
+      prompt: `what's the domain of ${companyName}`,
     });
 
-    if (!object.domain) {
+    if (!domainResult.object.domain) {
       console.log(`    ❌ AI could not find domain for ${companyName}`);
       return null;
     }
 
-    const cleanedDomain = cleanDomain(object.domain);
-    console.log(`    🔍 AI suggested domain: ${cleanedDomain}`);
-
-    // Verify the domain exists
-    if (await verifyDomainExists(cleanedDomain)) {
-      console.log(`    ✅ AI domain verified: ${cleanedDomain}`);
-      return cleanedDomain;
-    } else {
-      console.log(`    ❌ AI domain verification failed: ${cleanedDomain}`);
-      return null;
-    }
+    const cleanedDomain = cleanDomain(domainResult.object.domain);
+    console.log(`    ✅  AI suggested domain: ${cleanedDomain}`);
+    return cleanedDomain;
   } catch (error) {
     console.log(`    ❌ AI domain lookup failed for ${companyName}:`, error);
     return null;
@@ -437,23 +429,23 @@ async function findOfficialDomain(
 ): Promise<string | null> {
   console.log(`  🔍 Finding domain for: ${companyName}`);
 
-  // Strategy 1: Check existing sources first
-  const sourceDomain = await findDomainFromSources(companyName, sources);
-  if (sourceDomain) {
-    return sourceDomain;
-  }
-
-  // Strategy 2: AI-powered lookup with verification
+  // Strategy 1: AI-powered lookup with verification
   const aiDomain = await findDomainWithAI(companyName, genre);
   if (aiDomain) {
     return aiDomain;
   }
 
-  // Strategy 3: Search inside source page content
-  const contentDomain = await findDomainFromSourceContent(companyName, sources);
-  if (contentDomain) {
-    return contentDomain;
-  }
+  // // Strategy 2: Check existing sources first
+  // const sourceDomain = await findDomainFromSources(companyName, sources);
+  // if (sourceDomain) {
+  //   return sourceDomain;
+  // }
+
+  // // Strategy 3: Search inside source page content
+  // const contentDomain = await findDomainFromSourceContent(companyName, sources);
+  // if (contentDomain) {
+  //   return contentDomain;
+  // }
 
   // Fallback: Use company name + .com (no verification needed)
   console.log(
@@ -523,7 +515,7 @@ async function scoreSentiments(
   answer: string,
   companies: { name: string; domain: string }[]
 ): Promise<Sentiment> {
-  const { object } = await generateObject({
+  const sentimentResult = await generateObject({
     schema: SentimentSchema,
     model: google('gemini-2.5-flash'),
     system:
@@ -534,7 +526,7 @@ async function scoreSentiments(
       companies.map(c => `${c.name} | ${c.domain}`).join('\n'),
   });
 
-  return object;
+  return sentimentResult.object;
 }
 
 const WebsiteNameSchema = z.object({
@@ -550,7 +542,7 @@ function cleanDomain(domain: string): string {
 }
 
 async function extractWebsiteName(url: string): Promise<WebsiteName> {
-  const { object } = await generateObject({
+  const websiteResult = await generateObject({
     schema: WebsiteNameSchema,
     model: google('gemini-2.5-flash'),
     system: `
@@ -576,7 +568,7 @@ async function extractWebsiteName(url: string): Promise<WebsiteName> {
     `,
     prompt: `URL: ${url}`,
   });
-  return object;
+  return websiteResult.object;
 }
 
 const upsertProvider = async (name: string) =>
@@ -591,26 +583,30 @@ const upsertProvider = async (name: string) =>
 const upsertCompany = async (name: string, domain: string) => {
   // Check if company already exists
   const existing = await prisma.company.findUnique({
-    where: { domain }
+    where: { domain },
   });
 
   if (existing) {
     // Update with the longer/more complete name if the new one is more descriptive
-    const shouldUpdateName = name.length > existing.name.length || 
-                           (name.toLowerCase().includes('university') && !existing.name.toLowerCase().includes('university'));
-    
+    const shouldUpdateName =
+      name.length > existing.name.length ||
+      (name.toLowerCase().includes('university') &&
+        !existing.name.toLowerCase().includes('university'));
+
     if (shouldUpdateName) {
-      console.log(`    📝 Updating company name: "${existing.name}" → "${name}"`);
+      console.log(
+        `    📝 Updating company name: "${existing.name}" → "${name}"`
+      );
       await prisma.company.update({
         where: { domain },
-        data: { name }
+        data: { name },
       });
     }
     return existing.id;
   } else {
     // Create new company
     const created = await prisma.company.create({
-      data: { name, domain }
+      data: { name, domain },
     });
     return created.id;
   }
