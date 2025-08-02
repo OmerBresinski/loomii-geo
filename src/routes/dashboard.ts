@@ -35,10 +35,16 @@ router.get('/', async (req: Request, res: Response) => {
       since
     );
 
+    // Get best and least performing prompts
+    const bestPerformingPrompts = await getBestPerformingPrompts(company.id, since);
+    const leastPerformingPrompts = await getLeastPerformingPrompts(company.id, since);
+
     return res.json({
       visibility: visibilityData,
       sentiment: sentimentData,
       competitorPosition,
+      bestPerformingPrompts,
+      leastPerformingPrompts,
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
@@ -405,6 +411,146 @@ async function getCompetitorPositionData(
       };
     }),
   };
+}
+
+// Helper function to get best performing prompts
+async function getBestPerformingPrompts(companyId: number, since: Date) {
+  // Get all prompts for this company with their runs and mentions
+  const prompts = await prisma.prompt.findMany({
+    where: {
+      companyId: companyId,
+      isActive: true,
+    },
+    include: {
+      promptRuns: {
+        where: {
+          runAt: {
+            gte: since,
+          },
+        },
+        include: {
+          companyMentions: {
+            where: {
+              companyId: companyId, // Only count mentions of the user's company
+            },
+          },
+        },
+      },
+      promptTags: {
+        include: {
+          tag: true,
+        },
+      },
+    },
+  });
+
+  // Calculate visibility and sentiment for each prompt
+  const promptPerformance = prompts.map(prompt => {
+    const totalRuns = prompt.promptRuns.length;
+    const mentionRuns = prompt.promptRuns.filter(run => 
+      run.companyMentions.length > 0
+    ).length;
+    
+    const visibility = totalRuns > 0 ? (mentionRuns / totalRuns) * 100 : 0;
+    
+    // Calculate average sentiment from all mentions
+    const allSentiments = prompt.promptRuns.flatMap(run => 
+      run.companyMentions.map(mention => mention.sentiment)
+    );
+    const averageSentiment = allSentiments.length > 0 
+      ? allSentiments.reduce((sum, sentiment) => sum + sentiment, 0) / allSentiments.length 
+      : 0;
+
+    return {
+      id: prompt.id,
+      text: prompt.text,
+      visibility: Math.round(visibility * 100) / 100,
+      averageSentiment: Math.round(averageSentiment * 100) / 100,
+      totalRuns,
+      mentionRuns,
+      tags: prompt.promptTags.map(pt => ({
+        id: pt.tag.id,
+        label: pt.tag.label,
+        color: pt.tag.color,
+      })),
+    };
+  });
+
+  // Filter out prompts with no runs and sort by visibility (descending)
+  return promptPerformance
+    .filter(p => p.totalRuns > 0)
+    .sort((a, b) => b.visibility - a.visibility)
+    .slice(0, 3); // Top 3
+}
+
+// Helper function to get least performing prompts
+async function getLeastPerformingPrompts(companyId: number, since: Date) {
+  // Get all prompts for this company with their runs and mentions
+  const prompts = await prisma.prompt.findMany({
+    where: {
+      companyId: companyId,
+      isActive: true,
+    },
+    include: {
+      promptRuns: {
+        where: {
+          runAt: {
+            gte: since,
+          },
+        },
+        include: {
+          companyMentions: {
+            where: {
+              companyId: companyId, // Only count mentions of the user's company
+            },
+          },
+        },
+      },
+      promptTags: {
+        include: {
+          tag: true,
+        },
+      },
+    },
+  });
+
+  // Calculate visibility and sentiment for each prompt
+  const promptPerformance = prompts.map(prompt => {
+    const totalRuns = prompt.promptRuns.length;
+    const mentionRuns = prompt.promptRuns.filter(run => 
+      run.companyMentions.length > 0
+    ).length;
+    
+    const visibility = totalRuns > 0 ? (mentionRuns / totalRuns) * 100 : 0;
+    
+    // Calculate average sentiment from all mentions
+    const allSentiments = prompt.promptRuns.flatMap(run => 
+      run.companyMentions.map(mention => mention.sentiment)
+    );
+    const averageSentiment = allSentiments.length > 0 
+      ? allSentiments.reduce((sum, sentiment) => sum + sentiment, 0) / allSentiments.length 
+      : 0;
+
+    return {
+      id: prompt.id,
+      text: prompt.text,
+      visibility: Math.round(visibility * 100) / 100,
+      averageSentiment: Math.round(averageSentiment * 100) / 100,
+      totalRuns,
+      mentionRuns,
+      tags: prompt.promptTags.map(pt => ({
+        id: pt.tag.id,
+        label: pt.tag.label,
+        color: pt.tag.color,
+      })),
+    };
+  });
+
+  // Filter out prompts with no runs and sort by visibility (ascending)
+  return promptPerformance
+    .filter(p => p.totalRuns > 0)
+    .sort((a, b) => a.visibility - b.visibility)
+    .slice(0, 3); // Bottom 3
 }
 
 export { router as dashboardRouter };
