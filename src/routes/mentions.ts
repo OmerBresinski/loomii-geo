@@ -10,7 +10,8 @@ router.use(requireAuth);
 
 const mentionsQuerySchema = z.object({
   page: z.string().optional().transform((val) => val ? parseInt(val, 10) : 1),
-  limit: z.string().optional().transform((val) => val ? parseInt(val, 10) : 10)
+  limit: z.string().optional().transform((val) => val ? parseInt(val, 10) : 10),
+  promptId: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined)
 }).refine(
   (data) => data.page >= 1 && data.limit >= 1 && data.limit <= 100,
   {
@@ -31,7 +32,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 
     // Validate query parameters
     const validatedQuery = mentionsQuerySchema.parse(req.query);
-    const { page, limit } = validatedQuery;
+    const { page, limit, promptId } = validatedQuery;
     const skip = (page - 1) * limit;
 
     // First, get the user's company
@@ -56,12 +57,20 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 
     const companyId = user.organization.company.id;
 
+    // Build where clause for mentions
+    const whereClause: any = {
+      companyId: companyId
+    };
+
+    // If promptId is specified, filter by that specific prompt
+    if (promptId) {
+      whereClause.promptId = promptId;
+    }
+
     // Get mentions for the user's company with pagination
     const [mentions, totalCount] = await Promise.all([
       prisma.mention.findMany({
-        where: {
-          companyId: companyId
-        },
+        where: whereClause,
         include: {
           prompt: {
             select: {
@@ -91,9 +100,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
         take: limit
       }),
       prisma.mention.count({
-        where: {
-          companyId: companyId
-        }
+        where: whereClause
       })
     ]);
 
