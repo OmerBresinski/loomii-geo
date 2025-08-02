@@ -1,11 +1,16 @@
 import { prisma } from './database';
 import { subDays } from 'date-fns';
 
-export async function migratePromptRunDates() {
-  console.log('🔄 Starting prompt run date migration for all organizations...');
+export async function migratePromptRunDates(orgId?: string) {
+  if (orgId) {
+    console.log(`🔄 Starting prompt run date migration for organization: ${orgId}`);
+  } else {
+    console.log('🔄 Starting prompt run date migration for all organizations...');
+  }
 
-  // Get all organizations
+  // Get organizations based on whether orgId is provided
   const organizations = await prisma.organization.findMany({
+    where: orgId ? { id: orgId } : undefined,
     include: {
       company: {
         include: {
@@ -21,7 +26,7 @@ export async function migratePromptRunDates() {
     }
   });
 
-  console.log(`Found ${organizations.length} organizations to process`);
+  console.log(`Found ${organizations.length} organization${organizations.length !== 1 ? 's' : ''} to process`);
 
   if (organizations.length === 0) {
     console.log('No organizations found');
@@ -96,13 +101,23 @@ export async function migratePromptRunDates() {
     console.log(`  🎉 Completed migration for ${org.name}`);
   }
 
-  console.log('\n🎉 All organizations prompt run date migration completed successfully!');
+  console.log(`\n🎉 ${orgId ? 'Organization' : 'All organizations'} prompt run date migration completed successfully!`);
   
   // Show overall summary
+  const whereClause = orgId ? {
+    prompt: {
+      company: {
+        organizationId: orgId
+      }
+    }
+  } : {};
+  
   const oldestRun = await prisma.promptRun.findFirst({
+    where: whereClause,
     orderBy: { runAt: 'asc' },
   });
   const newestRun = await prisma.promptRun.findFirst({
+    where: whereClause,
     orderBy: { runAt: 'desc' },
   });
 
@@ -113,7 +128,17 @@ export async function migratePromptRunDates() {
 
 // Run if called directly
 if (require.main === module) {
-  migratePromptRunDates()
+  // Get orgId from command line arguments
+  const orgId = process.argv[2];
+  
+  if (orgId && orgId.startsWith('--')) {
+    console.error('Usage: npm run migrate:dates [orgId]');
+    console.error('Example: npm run migrate:dates');
+    console.error('Example: npm run migrate:dates "org-uuid-here"');
+    process.exit(1);
+  }
+
+  migratePromptRunDates(orgId)
     .then(() => {
       console.log('Migration completed');
       process.exit(0);
