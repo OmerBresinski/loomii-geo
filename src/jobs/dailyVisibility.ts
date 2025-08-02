@@ -118,7 +118,11 @@ async function extractCompanyNamesOnly(
   const CompanyNamesSchema = z.object({
     companies: z.array(
       z.object({
-        name: z.string().describe('Company name in English (translated if originally in Hebrew)'),
+        name: z
+          .string()
+          .describe(
+            'Company name in English (translated if originally in Hebrew)'
+          ),
       })
     ),
   });
@@ -126,39 +130,81 @@ async function extractCompanyNamesOnly(
   const { object } = await generateObject({
     schema: CompanyNamesSchema,
     model: google('gemini-2.5-flash'),
-    system: `Extract ONLY the company names mentioned in this response. 
+    temperature: 0.1, // Lower temperature for more consistent results
+    system: `You are an expert company name extraction specialist. Your job is to find EVERY SINGLE company name mentioned in the AI response text.
 
-RULES:
-- Do NOT include domains, websites, or URLs
-- Do NOT make up or guess company names
-- Only include companies actually mentioned in the RESPONSE
-- If a company name is in Hebrew, translate it to English (transliterate proper names phonetically)
-- Return company names in English only, suitable for domain matching
-- Ignore generic references (e.g., don't include "Salesforce" if the question is about "best Salesforce partners")
+YOUR MISSION: Extract ALL company names - do not miss any!
 
-NEVER EXTRACT THESE COMPANIES (always exclude):
-- Google
-- Apple  
-- Facebook
-- Meta
-- Microsoft
-- Amazon
-- YouTube
-- Instagram
-- WhatsApp
-- Alphabet
+WHAT TO EXTRACT:
+- Every company mentioned by name (e.g., "HubSpot", "Salesforce", "Monday.com")
+- Companies in lists (e.g., "We compared Asana, Trello, and Notion")
+- Companies as examples (e.g., "Like what Slack did for messaging")
+- Companies with descriptors (e.g., "the CRM leader Salesforce" → extract "Salesforce")
+- Companies mentioned as competitors or alternatives
+- Companies mentioned in any context: positive, negative, neutral, or just in passing
+- Startup names, even if small or lesser-known
+- Software companies, SaaS platforms, tech companies
+- Companies mentioned with domains (e.g., "monday.com" → extract "Monday")
+- Companies with unusual capitalization (e.g., "HubSpot", "LinkedIn", "GitHub")
+- Universities and educational institutions (e.g., "Harvard University", "MIT", "Technion", "Stanford")
+- Research institutions and academic organizations
+- Any institution that could be considered a competitive entity
 
-HEBREW TRANSLATION EXAMPLES:
-- "טכנולוגיות חדשות" → "New Technologies"
-- "פריס" → "Primis" 
-- "אלפא" → "Alpha"
+WHAT NOT TO EXTRACT:
+- Generic terms: "other companies", "various vendors", "many solutions"
+- These big tech giants: Google, Apple, Facebook, Meta, Microsoft, Amazon, YouTube, Instagram, WhatsApp, Alphabet
+- Domains/URLs without company context
+- Product categories (e.g., "CRM software" - only extract if it's a company name)
 
-Focus on smaller, specific companies that are actual competitors or alternatives in the space being discussed.`,
-    prompt: `PROMPT: ${prompt}
+LANGUAGE HANDLING:
+- If company name is in Hebrew, translate to English
+- If it's a transliteration/proper name, use the English version
+- Examples: "פרימיס" → "Primis", "אלפא" → "Alpha"
 
-RESPONSE: ${answer}
+EXTRACTION EXAMPLES:
 
-Extract only the company names mentioned (excluding the forbidden companies listed above). Translate any Hebrew names to English.`,
+Input: "The best CRM solutions include HubSpot, Salesforce, and Pipedrive"
+Extract: ["HubSpot", "Salesforce", "Pipedrive"]
+
+Input: "Unlike Slack or Microsoft Teams, this tool focuses on..."
+Extract: ["Slack"] (exclude Microsoft as it's forbidden)
+
+Input: "Companies like Notion, Asana, and monday.com are popular"
+Extract: ["Notion", "Asana", "Monday"]
+
+Input: "We compared it to what Zoom does for video calls"
+Extract: ["Zoom"]
+
+Input: "The startup reminded me of early Airbnb"
+Extract: ["Airbnb"]
+
+Input: "Universities like MIT, Stanford, and Technion are leading in AI research"
+Extract: ["MIT", "Stanford", "Technion"]
+
+Input: "Harvard University and Tel Aviv University collaborated on this project"
+Extract: ["Harvard University", "Tel Aviv University"]
+
+Input: "Research from Berkeley and the Weizmann Institute shows..."
+Extract: ["Berkeley", "Weizmann Institute"]
+
+THOROUGHNESS CHECK:
+Before finishing, scan the text again for:
+- Company names at the beginning of sentences
+- Company names at the end of sentences
+- Company names in the middle of lists
+- Company names mentioned only once
+- Company names with ".com", ".io", etc. (extract the company part)
+- Abbreviated company names or acronyms that represent companies
+
+CRITICAL: Do not miss ANY company names. Be extremely thorough.`,
+    prompt: `ORIGINAL PROMPT: ${prompt}
+
+AI RESPONSE TO ANALYZE:
+"""
+${answer}
+"""
+
+Now extract ALL company names mentioned in the AI response above. Scan thoroughly and don't miss any company names.`,
   });
 
   console.log(
@@ -178,7 +224,6 @@ async function verifyDomainExists(domain: string): Promise<boolean> {
     return false;
   }
 }
-
 
 // Strategy 1: Extract domains from existing sources
 async function findDomainFromSources(
@@ -442,10 +487,14 @@ async function extractMentions(
   }
 
   // Filter out empty company names
-  const validCompanyNames = companyNames.filter(name => name && name.trim() !== '');
-  
+  const validCompanyNames = companyNames.filter(
+    name => name && name.trim() !== ''
+  );
+
   if (validCompanyNames.length !== companyNames.length) {
-    console.log(`  ⚠️  Filtered out ${companyNames.length - validCompanyNames.length} empty company names`);
+    console.log(
+      `  ⚠️  Filtered out ${companyNames.length - validCompanyNames.length} empty company names`
+    );
   }
 
   console.log('🔍 [3/3] Finding and verifying domains...');
@@ -539,14 +588,33 @@ const upsertProvider = async (name: string) =>
     })
   ).id;
 
-const upsertCompany = async (name: string, domain: string) =>
-  (
-    await prisma.company.upsert({
-      where: { domain },
-      update: {},
-      create: { name, domain },
-    })
-  ).id;
+const upsertCompany = async (name: string, domain: string) => {
+  // Check if company already exists
+  const existing = await prisma.company.findUnique({
+    where: { domain }
+  });
+
+  if (existing) {
+    // Update with the longer/more complete name if the new one is more descriptive
+    const shouldUpdateName = name.length > existing.name.length || 
+                           (name.toLowerCase().includes('university') && !existing.name.toLowerCase().includes('university'));
+    
+    if (shouldUpdateName) {
+      console.log(`    📝 Updating company name: "${existing.name}" → "${name}"`);
+      await prisma.company.update({
+        where: { domain },
+        data: { name }
+      });
+    }
+    return existing.id;
+  } else {
+    // Create new company
+    const created = await prisma.company.create({
+      data: { name, domain }
+    });
+    return created.id;
+  }
+};
 
 /**
  * Run daily visibility job for a specific organization
