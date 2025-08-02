@@ -39,12 +39,16 @@ router.get('/', async (req: Request, res: Response) => {
     const bestPerformingPrompts = await getBestPerformingPrompts(company.id, since);
     const leastPerformingPrompts = await getLeastPerformingPrompts(company.id, since);
 
+    // Get best performing AI providers
+    const bestPerformingProviders = await getBestPerformingProviders(company.id, since);
+
     return res.json({
       visibility: visibilityData,
       sentiment: sentimentData,
       competitorPosition,
       bestPerformingPrompts,
       leastPerformingPrompts,
+      bestPerformingProviders,
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
@@ -476,10 +480,17 @@ async function getBestPerformingPrompts(companyId: number, since: Date) {
     };
   });
 
-  // Filter out prompts with no runs and sort by visibility (descending)
+  // Filter out prompts with no runs and sort by visibility (descending), then by sentiment (descending)
   return promptPerformance
     .filter(p => p.totalRuns > 0)
-    .sort((a, b) => b.visibility - a.visibility)
+    .sort((a, b) => {
+      // Primary sort: visibility (descending)
+      const visibilityDiff = b.visibility - a.visibility;
+      if (visibilityDiff !== 0) return visibilityDiff;
+      
+      // Secondary sort: sentiment (descending - best sentiment first)
+      return b.averageSentiment - a.averageSentiment;
+    })
     .slice(0, 3); // Top 3
 }
 
@@ -546,11 +557,121 @@ async function getLeastPerformingPrompts(companyId: number, since: Date) {
     };
   });
 
-  // Filter out prompts with no runs and sort by visibility (ascending)
+  // Filter out prompts with no runs and sort by visibility (ascending), then by sentiment (ascending)
   return promptPerformance
     .filter(p => p.totalRuns > 0)
-    .sort((a, b) => a.visibility - b.visibility)
+    .sort((a, b) => {
+      // Primary sort: visibility (ascending)
+      const visibilityDiff = a.visibility - b.visibility;
+      if (visibilityDiff !== 0) return visibilityDiff;
+      
+      // Secondary sort: sentiment (ascending - worst sentiment first)
+      return a.averageSentiment - b.averageSentiment;
+    })
     .slice(0, 3); // Bottom 3
+}
+
+// Helper function to get best performing AI providers
+async function getBestPerformingProviders(companyId: number, since: Date) {
+  // Get all providers first to ensure we include all of them
+  const allProviders = await prisma.aIProvider.findMany();
+
+  // Get all prompt runs for this company with provider and company mention data
+  const promptRuns = await prisma.promptRun.findMany({
+    where: {
+      prompt: {
+        companyId: companyId,
+      },
+      runAt: {
+        gte: since,
+      },
+    },
+    include: {
+      provider: true,
+      companyMentions: {
+        where: {
+          companyId: companyId, // Only count mentions of the user's company
+        },
+      },
+    },
+  });
+
+  // Initialize all providers with zero data
+  const providerPerformance = new Map<
+    number,
+    {
+      providerId: number;
+      providerName: string;
+      totalRuns: number;
+      mentionRuns: number;
+      sentiments: number[];
+    }
+  >();
+
+  // Initialize all providers with empty data
+  allProviders.forEach(provider => {
+    providerPerformance.set(provider.id, {
+      providerId: provider.id,
+      providerName: provider.name,
+      totalRuns: 0,
+      mentionRuns: 0,
+      sentiments: [],
+    });
+  });
+
+  // Update with actual data from prompt runs
+  promptRuns.forEach(run => {
+    const existing = providerPerformance.get(run.providerId)!; // We know it exists
+
+    existing.totalRuns += 1;
+
+    // Check if this run mentions the company
+    if (run.companyMentions.length > 0) {
+      existing.mentionRuns += 1;
+      // Add all sentiments from this run
+      existing.sentiments.push(...run.companyMentions.map(mention => mention.sentiment));
+    }
+
+    providerPerformance.set(run.providerId, existing);
+  });
+
+  // Convert to array and calculate final metrics
+  const providerResults = Array.from(providerPerformance.values()).map(provider => {
+    const visibility = provider.totalRuns > 0 
+      ? Math.round(((provider.mentionRuns / provider.totalRuns) * 100) * 100) / 100
+      : null;
+    
+    const averageSentiment = provider.sentiments.length > 0
+      ? Math.round((provider.sentiments.reduce((sum, sentiment) => sum + sentiment, 0) / provider.sentiments.length) * 100) / 100
+      : null;
+
+    return {
+      id: provider.providerId,
+      name: provider.providerName,
+      visibility,
+      averageSentiment,
+      totalRuns: provider.totalRuns,
+      mentionRuns: provider.mentionRuns,
+    };
+  });
+
+  // Sort by visibility (descending), then by sentiment (descending) and return top 3
+  return providerResults
+    .sort((a, b) => {
+      // Primary sort: visibility (descending) - null values go to the end
+      if (a.visibility === null && b.visibility === null) return 0;
+      if (a.visibility === null) return 1;
+      if (b.visibility === null) return -1;
+      const visibilityDiff = b.visibility - a.visibility;
+      if (visibilityDiff !== 0) return visibilityDiff;
+      
+      // Secondary sort: sentiment (descending - best sentiment first) - null values go to the end
+      if (a.averageSentiment === null && b.averageSentiment === null) return 0;
+      if (a.averageSentiment === null) return 1;
+      if (b.averageSentiment === null) return -1;
+      return b.averageSentiment - a.averageSentiment;
+    })
+    .slice(0, 3); // Top 3
 }
 
 export { router as dashboardRouter };
