@@ -19,21 +19,26 @@ const app = express();
 app.set('trust proxy', true);
 
 // Security middleware - configure helmet for production HTTPS
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+      },
     },
-  },
-  hsts: process.env.NODE_ENV === 'production' ? {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  } : false, // Disable HSTS in development
-}));
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? {
+            maxAge: 31536000,
+            includeSubDomains: true,
+            preload: true,
+          }
+        : false, // Disable HSTS in development
+  })
+);
 
 // CORS configuration - get allowed origins from FRONTEND_URLS environment variable
 console.log('🔍 Raw FRONTEND_URLS:', JSON.stringify(process.env.FRONTEND_URLS));
@@ -94,7 +99,7 @@ app.options('*', (req, res) => {
 if (process.env.ENVIRONMENT !== 'development') {
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.API_RATE_LIMIT || '100'), // limit each IP to 100 requests per windowMs
+    max: parseInt(process.env.API_RATE_LIMIT || '200'), // limit each IP to 100 requests per windowMs
     message: {
       success: false,
       error: 'Too many requests from this IP, please try again later.',
@@ -153,7 +158,7 @@ app.use((err: any, req: any, res: any, next: any) => {
     method: req.method,
     headers: req.headers,
     protocol: req.protocol,
-    secure: req.secure
+    secure: req.secure,
   });
   next(err);
 });
