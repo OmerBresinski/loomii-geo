@@ -230,8 +230,22 @@ router.get('/runs/:promptId', async (req, res) => {
         ? Math.round((organizationRunsWithMentions / totalRunsUpToDate) * 100)
         : 0;
 
-    // Calculate competitor visibility up to this date
-    const competitorVisibility = new Map<
+    // Calculate organization sentiment up to this date
+    const organizationSentiments: number[] = [];
+    runsUpToDate.forEach(run => {
+      run.companyMentions.forEach(mention => {
+        if (mention.company.domain.toLowerCase() === company.domain.toLowerCase()) {
+          organizationSentiments.push(mention.sentiment);
+        }
+      });
+    });
+
+    const organizationSentiment = organizationSentiments.length > 0
+      ? Math.round((organizationSentiments.reduce((sum, s) => sum + s, 0) / organizationSentiments.length) * 100) / 100
+      : 0;
+
+    // Calculate competitor visibility and sentiment up to this date
+    const competitorData = new Map<
       number,
       {
         companyId: number;
@@ -239,28 +253,34 @@ router.get('/runs/:promptId', async (req, res) => {
         companyDomain: string;
         runsWithMentions: number;
         visibility: number;
+        sentiments: number[];
+        averageSentiment: number;
       }
     >();
 
-    // Get all unique competitors mentioned up to this date
+    // Get all unique competitors mentioned up to this date and collect their sentiments
     runsUpToDate.forEach(run => {
       run.companyMentions.forEach(mention => {
         if (mention.company.domain !== company.domain) {
-          if (!competitorVisibility.has(mention.companyId)) {
-            competitorVisibility.set(mention.companyId, {
+          if (!competitorData.has(mention.companyId)) {
+            competitorData.set(mention.companyId, {
               companyId: mention.companyId,
               companyName: mention.company.name,
               companyDomain: mention.company.domain,
               runsWithMentions: 0,
               visibility: 0,
+              sentiments: [],
+              averageSentiment: 0,
             });
           }
+          // Add sentiment to the competitor
+          competitorData.get(mention.companyId)!.sentiments.push(mention.sentiment);
         }
       });
     });
 
-    // Count runs where each competitor was mentioned
-    for (const [companyId, competitor] of competitorVisibility.entries()) {
+    // Count runs where each competitor was mentioned and calculate average sentiment
+    for (const [companyId, competitor] of competitorData.entries()) {
       const runsWithMentions = runsUpToDate.filter(run =>
         run.companyMentions.some(mention => mention.companyId === companyId)
       ).length;
@@ -270,10 +290,14 @@ router.get('/runs/:promptId', async (req, res) => {
         totalRunsUpToDate > 0
           ? Math.round((runsWithMentions / totalRunsUpToDate) * 100 * 100) / 100
           : 0;
+      
+      competitor.averageSentiment = competitor.sentiments.length > 0
+        ? Math.round((competitor.sentiments.reduce((sum, s) => sum + s, 0) / competitor.sentiments.length) * 100) / 100
+        : 0;
     }
 
     // Get top 5 competitors by visibility
-    const topCompetitors = Array.from(competitorVisibility.values())
+    const topCompetitors = Array.from(competitorData.values())
       .sort((a, b) => b.visibility - a.visibility)
       .slice(0, 5)
       .map(competitor => ({
@@ -281,6 +305,7 @@ router.get('/runs/:promptId', async (req, res) => {
         companyName: competitor.companyName,
         companyDomain: competitor.companyDomain,
         visibility: competitor.visibility,
+        averageSentiment: competitor.averageSentiment,
       }));
 
     return {
@@ -288,6 +313,7 @@ router.get('/runs/:promptId', async (req, res) => {
       runAt: currentRun.runAt,
       totalRuns: totalRunsUpToDate,
       organizationVisibility,
+      organizationSentiment,
       topCompetitors,
     };
   });
