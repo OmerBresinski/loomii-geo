@@ -3,6 +3,9 @@ import { prisma } from '@/utils/database';
 import { subDays } from 'date-fns';
 import { requireAuth } from '../middleware/auth';
 import { body, validationResult } from 'express-validator';
+import { generateText, generateObject } from 'ai';
+import { google } from '@ai-sdk/google';
+import { z } from 'zod';
 
 const router = Router();
 
@@ -234,15 +237,22 @@ router.get('/runs/:promptId', async (req, res) => {
     const organizationSentiments: number[] = [];
     runsUpToDate.forEach(run => {
       run.companyMentions.forEach(mention => {
-        if (mention.company.domain.toLowerCase() === company.domain.toLowerCase()) {
+        if (
+          mention.company.domain.toLowerCase() === company.domain.toLowerCase()
+        ) {
           organizationSentiments.push(mention.sentiment);
         }
       });
     });
 
-    const organizationSentiment = organizationSentiments.length > 0
-      ? Math.round((organizationSentiments.reduce((sum, s) => sum + s, 0) / organizationSentiments.length) * 100) / 100
-      : 0;
+    const organizationSentiment =
+      organizationSentiments.length > 0
+        ? Math.round(
+            (organizationSentiments.reduce((sum, s) => sum + s, 0) /
+              organizationSentiments.length) *
+              100
+          ) / 100
+        : 0;
 
     // Calculate competitor visibility and sentiment up to this date
     const competitorData = new Map<
@@ -274,7 +284,9 @@ router.get('/runs/:promptId', async (req, res) => {
             });
           }
           // Add sentiment to the competitor
-          competitorData.get(mention.companyId)!.sentiments.push(mention.sentiment);
+          competitorData
+            .get(mention.companyId)!
+            .sentiments.push(mention.sentiment);
         }
       });
     });
@@ -290,10 +302,15 @@ router.get('/runs/:promptId', async (req, res) => {
         totalRunsUpToDate > 0
           ? Math.round((runsWithMentions / totalRunsUpToDate) * 100 * 100) / 100
           : 0;
-      
-      competitor.averageSentiment = competitor.sentiments.length > 0
-        ? Math.round((competitor.sentiments.reduce((sum, s) => sum + s, 0) / competitor.sentiments.length) * 100) / 100
-        : 0;
+
+      competitor.averageSentiment =
+        competitor.sentiments.length > 0
+          ? Math.round(
+              (competitor.sentiments.reduce((sum, s) => sum + s, 0) /
+                competitor.sentiments.length) *
+                100
+            ) / 100
+          : 0;
     }
 
     // Get top 5 competitors by visibility
@@ -335,8 +352,11 @@ router.post(
       .optional()
       .isArray()
       .withMessage('Tag IDs must be an array')
-      .custom((tagIds) => {
-        if (tagIds && tagIds.some((id: any) => !Number.isInteger(id) || id <= 0)) {
+      .custom(tagIds => {
+        if (
+          tagIds &&
+          tagIds.some((id: any) => !Number.isInteger(id) || id <= 0)
+        ) {
           throw new Error('All tag IDs must be positive integers');
         }
         return true;
@@ -392,7 +412,9 @@ router.post(
         });
 
         const existingTagIds = existingTags.map(tag => tag.id);
-        const invalidTagIds = tagIds.filter((id: number) => !existingTagIds.includes(id));
+        const invalidTagIds = tagIds.filter(
+          (id: number) => !existingTagIds.includes(id)
+        );
 
         if (invalidTagIds.length > 0) {
           return res.status(400).json({
@@ -408,11 +430,14 @@ router.post(
           text,
           companyId: company.id,
           isActive: true,
-          promptTags: tagIds && tagIds.length > 0 ? {
-            create: tagIds.map((tagId: number) => ({
-              tagId,
-            })),
-          } : undefined,
+          promptTags:
+            tagIds && tagIds.length > 0
+              ? {
+                  create: tagIds.map((tagId: number) => ({
+                    tagId,
+                  })),
+                }
+              : undefined,
         },
         include: {
           promptTags: {
@@ -499,6 +524,98 @@ router.get('/tags', async (req: Request, res: Response) => {
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Failed to fetch tags',
+    });
+  }
+});
+
+// GET /prompts/suggestPrompts - Get AI-generated company analysis for prompt suggestions
+router.get('/suggestPrompts', async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.auth?.organization?.id;
+
+    if (!organizationId) {
+      return res.status(401).json({
+        error: 'Authentication required',
+      });
+    }
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        error: 'Organization not found',
+      });
+    }
+
+    // Step 1: Analyze the company
+    const { text: companyAnalysis } = await generateText({
+      model: google('gemini-2.5-flash'),
+      tools: {
+        google_search: google.tools.googleSearch({}),
+      },
+      system: `You are a business analyst expert. Analyze companies by visiting their website and provide comprehensive business intelligence. Always be factual and thorough.`,
+      prompt: `Please analyze the company website at ${organization.domain} and provide a detailed analysis with the following information:
+
+1. COMPANY DESCRIPTION: What does this company do? What are their main products/services? What is their business model? What industry are they in? Be very detailed and thorough.
+
+2. PRIMARY OPERATING COUNTRY: In which country does this company primarily operate? Where is their main market focus?
+
+3. COMPANY TYPE: What type of company is this? (e.g., B2B SaaS, E-commerce, Consulting, Manufacturing, Healthcare, Fintech, etc.)
+
+4. KEY BUSINESS AREAS: What are their main business verticals or focus areas?
+
+5. TARGET AUDIENCE: Who are their primary customers or target market?
+
+Please be comprehensive and provide as much detail as possible about the company's operations, services, and market position.
+
+Company domain to analyze: ${organization.domain}`,
+      maxOutputTokens: 2048,
+      temperature: 0.2,
+    });
+
+    // Step 2: Generate prompt suggestions based on the analysis
+    const promptSuggestionsSchema = z.object({
+      prompts: z.array(z.string()).min(20).max(20),
+    });
+
+    const { object: promptSuggestions } = await generateObject({
+      model: google('gemini-2.5-flash'),
+      schema: promptSuggestionsSchema,
+      system: `You are an expert in Generative Engine Optimization (GEO) and AI-driven search monitoring. Your task is to generate 20 high-value prompt suggestions for users to input into a GEO tracking system. These prompts should be designed to help organizations monitor their visibility, competitor presence, and sentiment in responses from generative AI providers (e.g., ChatGPT, Gemini, Grok, Perplexity).
+
+You will be provided with extracted data about the organization, including details like company name, industry/field, location, key products/services, target audience, and any notable competitors or unique selling points (USPs) inferred from their domain URL.
+
+Using this data, create prompts that are:
+
+1. Natural, conversational queries that mimic real user searches in AI systems.
+2. Diverse: Include a mix of:
+   - Unbranded queries (industry or need-based, to check organic visibility).
+   - Product/service-specific.
+   - Sentiment-oriented (e.g., pros/cons, reviews).
+   - Trend or top-list related (e.g., top companies in a field).
+   - Long-tail queries for niche insights.
+3. NEVER USE ANY COMPANY NAMES OR BRANDS in the prompts. Focus on generic industry terms or needs.
+4. Relevant and valuable for GEO tracking: Each prompt should help reveal how the company appears in AI outputs (e.g., mentions, rankings, citations, positive/negative tones).
+5. Ensure that every prompt is crafted to elicit responses from AI providers that include lists or rankings of companies in one way or another, such as top lists, recommendations, comparisons, best-of categories, alternatives, or market leaders. Avoid any prompts that would yield general advice, instructions, non-comparative insights, or responses without mentioning specific companies.
+6. Return exactly 20 prompts in the prompts array. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.`,
+      prompt: companyAnalysis,
+      temperature: 0.3,
+    });
+
+    return res.json({
+      organizationDomain: organization.domain,
+      organizationName: organization.name,
+      analysis: companyAnalysis,
+      prompts: promptSuggestions.prompts,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error generating company analysis:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'Failed to generate company analysis',
     });
   }
 });
