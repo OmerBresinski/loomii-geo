@@ -96,6 +96,11 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
         firstName: user.firstName,
         lastName: user.lastName,
         organizationId: user.organizationId,
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          domain: organization.domain,
+        },
       },
     });
   } catch (error) {
