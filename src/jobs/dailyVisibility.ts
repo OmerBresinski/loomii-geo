@@ -519,7 +519,7 @@ async function scoreSentiments(
 ): Promise<Sentiment> {
   const sentimentResult = await generateObject({
     schema: SentimentSchema,
-    model: google('gemini-2.5-flash'),
+    model: google('gemini-2.5-pro'),
     system:
       `Rate the overall sentiment toward each company on a −1 (very negative) to +1 (very positive) scale.\n` +
       `Return JSON {sentiments:[{name,domain,sentiment}]}.`,
