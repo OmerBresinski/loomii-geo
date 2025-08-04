@@ -17,7 +17,7 @@ const genericSchema = z.object({
 
 const PROVIDERS = [
   {
-    key: 'gemini-2.5-pro',
+    key: 'Gemini',
     call: async (prompt: string) => {
       const { text, sources } = await generateText({
         model: google('gemini-2.5-pro'),
