@@ -93,14 +93,23 @@ Company domain to analyze: ${organization.domain}`,
     console.log(text);
     console.log('');
 
-    // Step 2: Generate prompt suggestions based on the analysis
+    // Step 2: Get available tags for suggestion
+    const availableTags = await prisma.tag.findMany({
+      orderBy: { label: 'asc' },
+    });
+    console.log(`📋 Found ${availableTags.length} available tags`);
+
+    // Step 3: Generate prompt suggestions based on the analysis
     console.log(
       '🎯 Generating prompt suggestions based on company analysis...'
     );
 
     const promptStartTime = Date.now();
     const promptSuggestionsSchema = z.object({
-      prompts: z.array(z.string()).min(20).max(20),
+      prompts: z.array(z.object({
+        text: z.string(),
+        suggestedTagIds: z.array(z.number()).optional(),
+      })).min(20).max(20),
     });
 
     const { object: promptSuggestionsObject } = await generateObject({
@@ -122,8 +131,21 @@ Using this data, create prompts that are:
 3. NEVER USE ANY COMPANY NAMES OR BRANDS in the prompts. Focus on generic industry terms or needs.
 4. Relevant and valuable for GEO tracking: Each prompt should help reveal how the company appears in AI outputs (e.g., mentions, rankings, citations, positive/negative tones).
 5. Ensure that every prompt is crafted to elicit responses from AI providers that include lists or rankings of companies in one way or another, such as top lists, recommendations, comparisons, best-of categories, alternatives, or market leaders. Avoid any prompts that would yield general advice, instructions, non-comparative insights, or responses without mentioning specific companies.
-6. If the organization's location is in a non-English speaking country (e.g., Israel, Germany, France, or similar based on the provided data), incorporate the country name or origin into the prompts to make them location-specific, such as "Which Israeli company...", "Top French providers for...", "Best German [industry] companies that...", etc. Use the exact location from the data where appropriate.
-7. Return exactly 20 prompts in the prompts array. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.1.9s`,
+6. CRITICAL: Analyze the company data to determine the country/region. If the organization is from a non-English speaking country (Israel, Germany, France, Spain, Italy, Netherlands, Japan, South Korea, etc.), you MUST include the country identifier in EVERY prompt. Examples:
+   - "Top Israeli fintech companies for small businesses"
+   - "Best German manufacturing software providers" 
+   - "Leading French e-commerce platforms"
+   - "Which Japanese companies offer the best..."
+   If the company is from an English-speaking country (US, UK, Canada, Australia), create generic prompts without country identifiers.
+7. For each prompt, suggest relevant tags from the available tag options. Analyze the prompt content and select 1-3 most relevant tag IDs. If no tags are relevant, leave suggestedTagIds empty.
+8. Return exactly 20 prompts in the prompts array with their suggested tags. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.
+
+AVAILABLE TAGS:
+${availableTags.map(tag => `ID: ${tag.id}, Label: "${tag.label}"`).join('\n')}
+
+Return format: Each prompt should have:
+- text: The prompt text
+- suggestedTagIds: Array of relevant tag IDs (1-3 tags max, can be empty)`,
       prompt: text, // Use the company analysis as the prompt
       temperature: 0.3,
     });
@@ -135,19 +157,30 @@ Using this data, create prompts that are:
     console.log(`✅ Prompt suggestions generated in ${promptDuration}ms`);
     console.log('');
 
+    // Add tag details to the response (simulate what the endpoint does)
+    const promptsWithTagDetails = promptSuggestionsObject.prompts.map(prompt => ({
+      text: prompt.text,
+      suggestedTags: prompt.suggestedTagIds ? 
+        availableTags.filter(tag => prompt.suggestedTagIds!.includes(tag.id)) : [],
+    }));
+
     // Final response format
     const finalResponse = {
       organizationDomain: organization.domain,
       organizationName: organization.name,
       analysis: text,
-      prompts: promptSuggestionsObject.prompts,
+      prompts: promptsWithTagDetails,
+      availableTags: availableTags,
       generatedAt: new Date().toISOString(),
     };
 
     console.log('🎯 GENERATED PROMPT SUGGESTIONS:');
     console.log('='.repeat(50));
     promptSuggestionsObject.prompts.forEach((prompt, index) => {
-      console.log(`${index + 1}. ${prompt}`);
+      const tagInfo = prompt.suggestedTagIds && prompt.suggestedTagIds.length > 0 
+        ? ` [Tags: ${prompt.suggestedTagIds.join(', ')}]`
+        : '';
+      console.log(`${index + 1}. ${prompt.text}${tagInfo}`);
     });
     console.log('');
     console.log('✅ Test completed successfully!');

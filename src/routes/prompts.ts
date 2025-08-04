@@ -595,9 +595,17 @@ Company domain to analyze: ${organization.domain}`,
       });
     }
 
-    // Step 2: Generate prompt suggestions based on the analysis
+    // Step 2: Get available tags for suggestion
+    const availableTags = await prisma.tag.findMany({
+      orderBy: { label: 'asc' },
+    });
+
+    // Step 3: Generate prompt suggestions with tag recommendations
     const promptSuggestionsSchema = z.object({
-      prompts: z.array(z.string()).min(20).max(20),
+      prompts: z.array(z.object({
+        text: z.string(),
+        suggestedTagIds: z.array(z.number()).optional(),
+      })).min(20).max(20),
     });
 
     const { object: promptSuggestions } = await generateObject({
@@ -619,17 +627,38 @@ Using this data, create prompts that are:
 3. NEVER USE ANY COMPANY NAMES OR BRANDS in the prompts. Focus on generic industry terms or needs.
 4. Relevant and valuable for GEO tracking: Each prompt should help reveal how the company appears in AI outputs (e.g., mentions, rankings, citations, positive/negative tones).
 5. Ensure that every prompt is crafted to elicit responses from AI providers that include lists or rankings of companies in one way or another, such as top lists, recommendations, comparisons, best-of categories, alternatives, or market leaders. Avoid any prompts that would yield general advice, instructions, non-comparative insights, or responses without mentioning specific companies.
-6. If the organization's location is in a non-English speaking country (e.g., Israel, Germany, France, or similar based on the provided data), incorporate the country name or origin into the prompts to make them location-specific, such as "Which Israeli company...", "Top French providers for...", "Best German [industry] companies that...", etc. Use the exact location from the data where appropriate.
-7. Return exactly 20 prompts in the prompts array. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.`,
+6. CRITICAL: Analyze the company data to determine the country/region. If the organization is from a non-English speaking country (Israel, Germany, France, Spain, Italy, Netherlands, Japan, South Korea, etc.), you MUST include the country identifier in EVERY prompt. Examples:
+   - "Top Israeli fintech companies for small businesses"
+   - "Best German manufacturing software providers" 
+   - "Leading French e-commerce platforms"
+   - "Which Japanese companies offer the best..."
+   If the company is from an English-speaking country (US, UK, Canada, Australia), create generic prompts without country identifiers.
+7. For each prompt, suggest relevant tags from the available tag options. Analyze the prompt content and select 1-3 most relevant tag IDs. If no tags are relevant, leave suggestedTagIds empty.
+8. Return exactly 20 prompts in the prompts array with their suggested tags. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.
+
+AVAILABLE TAGS:
+${availableTags.map(tag => `ID: ${tag.id}, Label: "${tag.label}"`).join('\n')}
+
+Return format: Each prompt should have:
+- text: The prompt text
+- suggestedTagIds: Array of relevant tag IDs (1-3 tags max, can be empty)`,
       prompt: companyAnalysis,
       temperature: 0.3,
     });
+
+    // Add tag details to the response
+    const promptsWithTagDetails = promptSuggestions.prompts.map(prompt => ({
+      text: prompt.text,
+      suggestedTags: prompt.suggestedTagIds ? 
+        availableTags.filter(tag => prompt.suggestedTagIds!.includes(tag.id)) : [],
+    }));
 
     return res.json({
       organizationDomain: organization.domain,
       organizationName: organization.name,
       analysis: companyAnalysis,
-      prompts: promptSuggestions.prompts,
+      prompts: promptsWithTagDetails,
+      availableTags: availableTags,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
@@ -637,6 +666,181 @@ Using this data, create prompts that are:
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Failed to generate company analysis',
+    });
+  }
+});
+
+// POST /prompts/bulk - Create multiple prompts at once
+router.post('/bulk', async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.auth?.organization?.id;
+
+    if (!organizationId) {
+      return res.status(401).json({
+        error: 'Authentication required',
+      });
+    }
+
+    const { prompts } = req.body;
+
+    // Validate request body
+    if (!Array.isArray(prompts) || prompts.length === 0) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: 'Prompts array is required and must not be empty',
+      });
+    }
+
+    if (prompts.length > 20) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: 'Cannot create more than 20 prompts at once',
+      });
+    }
+
+    // Validate each prompt
+    for (let i = 0; i < prompts.length; i++) {
+      const prompt = prompts[i];
+      if (!prompt.text || typeof prompt.text !== 'string') {
+        return res.status(400).json({
+          error: 'Validation failed',
+          message: `Prompt at index ${i} must have a text field`,
+        });
+      }
+      if (prompt.text.trim().length < 10 || prompt.text.trim().length > 500) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          message: `Prompt at index ${i} text must be between 10 and 500 characters`,
+        });
+      }
+      if (prompt.tagIds && !Array.isArray(prompt.tagIds)) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          message: `Prompt at index ${i} tagIds must be an array`,
+        });
+      }
+    }
+
+    // Get the organization's company
+    const company = await prisma.company.findFirst({
+      where: { organizationId },
+    });
+
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Check current prompt count and total limit
+    const currentPromptCount = await prisma.prompt.count({
+      where: { companyId: company.id },
+    });
+
+    const PROMPT_LIMIT = 20;
+    if (currentPromptCount + prompts.length > PROMPT_LIMIT) {
+      return res.status(400).json({
+        error: 'Prompt limit exceeded',
+        message: `Cannot create ${prompts.length} prompts. Current count: ${currentPromptCount}, limit: ${PROMPT_LIMIT}`,
+        details: {
+          currentCount: currentPromptCount,
+          requestedCount: prompts.length,
+          maxLimit: PROMPT_LIMIT,
+          availableSlots: PROMPT_LIMIT - currentPromptCount,
+        },
+      });
+    }
+
+    // Validate all tag IDs if provided
+    const allTagIds = prompts
+      .filter(p => p.tagIds && p.tagIds.length > 0)
+      .flatMap(p => p.tagIds);
+    
+    if (allTagIds.length > 0) {
+      const existingTags = await prisma.tag.findMany({
+        where: { id: { in: allTagIds } },
+        select: { id: true },
+      });
+
+      const existingTagIds = existingTags.map(tag => tag.id);
+      const invalidTagIds = allTagIds.filter(id => !existingTagIds.includes(id));
+
+      if (invalidTagIds.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid tag IDs',
+          message: `Tag IDs ${invalidTagIds.join(', ')} do not exist`,
+        });
+      }
+    }
+
+    // Create prompts in bulk
+    const results = {
+      created: 0,
+      failed: 0,
+      errors: [] as Array<{ prompt: string; error: string }>,
+      prompts: [] as any[],
+    };
+
+    await prisma.$transaction(async (tx) => {
+      for (const promptData of prompts) {
+        try {
+          const prompt = await tx.prompt.create({
+            data: {
+              text: promptData.text.trim(),
+              companyId: company.id,
+              isActive: true,
+              promptTags:
+                promptData.tagIds && promptData.tagIds.length > 0
+                  ? {
+                      create: promptData.tagIds.map((tagId: number) => ({
+                        tagId,
+                      })),
+                    }
+                  : undefined,
+            },
+            include: {
+              promptTags: {
+                include: {
+                  tag: true,
+                },
+              },
+            },
+          });
+
+          results.prompts.push({
+            promptId: prompt.id,
+            text: prompt.text,
+            isActive: prompt.isActive,
+            createdAt: prompt.createdAt,
+            tags: prompt.promptTags.map(pt => ({
+              id: pt.tag.id,
+              label: pt.tag.label,
+              color: pt.tag.color,
+            })),
+          });
+
+          results.created++;
+        } catch (error) {
+          results.failed++;
+          results.errors.push({
+            prompt: promptData.text,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+    });
+
+    return res.status(201).json({
+      success: results.failed === 0,
+      created: results.created,
+      failed: results.failed,
+      errors: results.errors.length > 0 ? results.errors : undefined,
+      prompts: results.prompts,
+    });
+
+  } catch (error) {
+    console.error('Error creating bulk prompts:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'Failed to create prompts',
     });
   }
 });
