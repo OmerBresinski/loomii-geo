@@ -37,11 +37,17 @@ export async function deleteOrganization(organizationId: string): Promise<void> 
   if (!organization.company) {
     console.log('⚠️  No company associated with this organization');
     
-    // Still delete users and organization
+    // Still delete users, summary, and organization
     console.log('🗑️  Deleting users...');
     await prisma.user.deleteMany({
       where: { organizationId },
     });
+
+    console.log('🗑️  Deleting organization summary...');
+    const summaryDeleted = await prisma.organizationSummary.deleteMany({
+      where: { organizationId },
+    });
+    console.log(`    Deleted ${summaryDeleted.count} organization summaries`);
 
     console.log('🗑️  Deleting organization...');
     await prisma.organization.delete({
@@ -149,8 +155,15 @@ export async function deleteOrganization(organizationId: string): Promise<void> 
       });
       console.log(`    Deleted ${usersDeleted.count} users`);
 
-      // 8. Delete Organization record
-      console.log('🗑️  [11/11] Deleting organization...');
+      // 8. Delete OrganizationSummary record
+      console.log('🗑️  [11/12] Deleting organization summary...');
+      const summaryDeleted = await tx.organizationSummary.deleteMany({
+        where: { organizationId },
+      });
+      console.log(`    Deleted ${summaryDeleted.count} organization summaries`);
+
+      // 9. Delete Organization record
+      console.log('🗑️  [12/12] Deleting organization...');
       await tx.organization.delete({
         where: { id: organizationId },
       });
