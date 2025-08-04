@@ -520,13 +520,13 @@ async function extractMentions(
   // Log rate limiter and cache statistics
   const rateLimiterStatus = perplexityRateLimiter.getStatus();
   const cacheStats = rateLimiterStatus.cache;
-  
+
   if (rateLimiterStatus.queueLength > 0 || rateLimiterStatus.processing) {
     console.log(
       `⏳ Perplexity rate limiter: ${rateLimiterStatus.queueLength} queued, processing: ${rateLimiterStatus.processing}`
     );
   }
-  
+
   if (cacheStats.totalLookups > 0) {
     console.log(
       `💾 Cache stats: ${cacheStats.hits} hits, ${cacheStats.misses} misses, ${cacheStats.hitRate} hit rate (${cacheStats.size}/${cacheStats.maxSize} entries)`
