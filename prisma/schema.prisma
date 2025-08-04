@@ -20,12 +20,13 @@ model User {
 }
 
 model Organization {
-    id        String   @id @default(uuid())
+    id        String               @id @default(uuid())
     name      String
-    domain    String   @unique
-    createdAt DateTime @default(now())
-    company   Company? // One-to-one relationship
+    domain    String               @unique
+    createdAt DateTime             @default(now())
+    company   Company?             // One-to-one relationship
     users     User[]
+    summary   OrganizationSummary?
 }
 
 model Company {
@@ -156,4 +157,13 @@ model MentionDetail {
     companyMentionId Int?
 
     @@index([sourceUrlId])
+}
+
+model OrganizationSummary {
+    id             String       @id @default(uuid())
+    organization   Organization @relation(fields: [organizationId], references: [id])
+    organizationId String       @unique
+    analysis       String       @db.Text
+    createdAt      DateTime     @default(now())
+    updatedAt      DateTime     @updatedAt
 }

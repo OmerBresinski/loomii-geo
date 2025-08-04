@@ -541,6 +541,7 @@ router.get('/suggestPrompts', async (req: Request, res: Response) => {
 
     const organization = await prisma.organization.findUnique({
       where: { id: organizationId },
+      include: { summary: true },
     });
 
     if (!organization) {
@@ -549,14 +550,22 @@ router.get('/suggestPrompts', async (req: Request, res: Response) => {
       });
     }
 
-    // Step 1: Analyze the company
-    const { text: companyAnalysis } = await generateText({
-      model: google('gemini-2.5-flash'),
-      tools: {
-        google_search: google.tools.googleSearch({}),
-      },
-      system: `You are a business analyst expert. Analyze companies by visiting their website and provide comprehensive business intelligence. Always be factual and thorough.`,
-      prompt: `Please analyze the company website at ${organization.domain} and provide a detailed analysis with the following information:
+    let companyAnalysis: string;
+
+    // Check if we already have a cached analysis
+    if (organization.summary) {
+      console.log('Using cached organization analysis');
+      companyAnalysis = organization.summary.analysis;
+    } else {
+      // Step 1: Analyze the company
+      console.log('Generating new organization analysis');
+      const { text } = await generateText({
+        model: google('gemini-2.5-flash'),
+        tools: {
+          google_search: google.tools.googleSearch({}),
+        },
+        system: `You are a business analyst expert. Analyze companies by visiting their website and provide comprehensive business intelligence. Always be factual and thorough.`,
+        prompt: `Please analyze the company website at ${organization.domain} and provide a detailed analysis with the following information:
 
 1. COMPANY DESCRIPTION: What does this company do? What are their main products/services? What is their business model? What industry are they in? Be very detailed and thorough.
 
@@ -571,9 +580,20 @@ router.get('/suggestPrompts', async (req: Request, res: Response) => {
 Please be comprehensive and provide as much detail as possible about the company's operations, services, and market position.
 
 Company domain to analyze: ${organization.domain}`,
-      maxOutputTokens: 2048,
-      temperature: 0.2,
-    });
+        maxOutputTokens: 2048,
+        temperature: 0.2,
+      });
+
+      companyAnalysis = text;
+
+      // Save the analysis to the database
+      await prisma.organizationSummary.create({
+        data: {
+          organizationId: organization.id,
+          analysis: companyAnalysis,
+        },
+      });
+    }
 
     // Step 2: Generate prompt suggestions based on the analysis
     const promptSuggestionsSchema = z.object({
@@ -599,7 +619,8 @@ Using this data, create prompts that are:
 3. NEVER USE ANY COMPANY NAMES OR BRANDS in the prompts. Focus on generic industry terms or needs.
 4. Relevant and valuable for GEO tracking: Each prompt should help reveal how the company appears in AI outputs (e.g., mentions, rankings, citations, positive/negative tones).
 5. Ensure that every prompt is crafted to elicit responses from AI providers that include lists or rankings of companies in one way or another, such as top lists, recommendations, comparisons, best-of categories, alternatives, or market leaders. Avoid any prompts that would yield general advice, instructions, non-comparative insights, or responses without mentioning specific companies.
-6. Return exactly 20 prompts in the prompts array. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.`,
+6. If the organization's location is in a non-English speaking country (e.g., Israel, Germany, France, or similar based on the provided data), incorporate the country name or origin into the prompts to make them location-specific, such as "Which Israeli company...", "Top French providers for...", "Best German [industry] companies that...", etc. Use the exact location from the data where appropriate.
+7. Return exactly 20 prompts in the prompts array. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.`,
       prompt: companyAnalysis,
       temperature: 0.3,
     });

@@ -3,7 +3,7 @@ import { generateText, generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 
-const TEST_ORG_ID = '162f8322-3215-4bf3-b23f-3256c3b5e0c6';
+const TEST_ORG_ID = '234777c9-8eda-49d9-8b3a-e5fe27506ef5';
 
 async function testSuggestPrompts() {
   console.log('🧪 Testing /suggestPrompts endpoint simulation...');
@@ -13,6 +13,7 @@ async function testSuggestPrompts() {
     // Get the organization from the database
     const organization = await prisma.organization.findUnique({
       where: { id: TEST_ORG_ID },
+      include: { summary: true },
     });
 
     if (!organization) {
@@ -24,18 +25,30 @@ async function testSuggestPrompts() {
     console.log(`🌐 Domain: ${organization.domain}`);
     console.log('');
 
-    // Simulate the API call that the endpoint would make
-    console.log('🤖 Making API call to Gemini Flash 2.5 with Google Search...');
+    let text: string;
+    let duration: number;
+    const overallStartTime = Date.now();
 
-    const startTime = Date.now();
+    // Check if we already have a cached analysis
+    if (organization.summary) {
+      console.log('📋 Using cached organization analysis');
+      text = organization.summary.analysis;
+      duration = 0; // No API call needed
+    } else {
+      // Simulate the API call that the endpoint would make
+      console.log(
+        '🤖 Making API call to Gemini Flash 2.5 with Google Search...'
+      );
 
-    const { text } = await generateText({
-      model: google('gemini-2.5-flash'),
-      tools: {
-        google_search: google.tools.googleSearch({}),
-      },
-      system: `You are a business analyst expert. Analyze companies by visiting their website and provide comprehensive business intelligence. Always be factual and thorough.`,
-      prompt: `Please analyze the company website at ${organization.domain} and provide a detailed analysis with the following information:
+      const startTime = Date.now();
+
+      const response = await generateText({
+        model: google('gemini-2.5-flash'),
+        tools: {
+          google_search: google.tools.googleSearch({}),
+        },
+        system: `You are a business analyst expert. Analyze companies by visiting their website and provide comprehensive business intelligence. Always be factual and thorough.`,
+        prompt: `Please analyze the company website at ${organization.domain} and provide a detailed analysis with the following information:
 
 1. COMPANY DESCRIPTION: What does this company do? What are their main products/services? What is their business model? What industry are they in? Be very detailed and thorough.
 
@@ -50,14 +63,24 @@ async function testSuggestPrompts() {
 Please be comprehensive and provide as much detail as possible about the company's operations, services, and market position.
 
 Company domain to analyze: ${organization.domain}`,
-      maxOutputTokens: 2048,
-      temperature: 0.2,
-    });
+        maxOutputTokens: 2048,
+        temperature: 0.2,
+      });
 
-    const endTime = Date.now();
-    const duration = endTime - startTime;
+      const endTime = Date.now();
+      duration = endTime - startTime;
+      text = response.text;
 
-    console.log(`✅ Company analysis completed in ${duration}ms`);
+      console.log(`✅ Company analysis completed in ${duration}ms`);
+
+      // Save the analysis to the database
+      await prisma.organizationSummary.create({
+        data: {
+          organizationId: organization.id,
+          analysis: text,
+        },
+      });
+    }
     console.log('');
 
     console.log('📊 COMPANY ANALYSIS RESULTS:');
@@ -99,14 +122,15 @@ Using this data, create prompts that are:
 3. NEVER USE ANY COMPANY NAMES OR BRANDS in the prompts. Focus on generic industry terms or needs.
 4. Relevant and valuable for GEO tracking: Each prompt should help reveal how the company appears in AI outputs (e.g., mentions, rankings, citations, positive/negative tones).
 5. Ensure that every prompt is crafted to elicit responses from AI providers that include lists or rankings of companies in one way or another, such as top lists, recommendations, comparisons, best-of categories, alternatives, or market leaders. Avoid any prompts that would yield general advice, instructions, non-comparative insights, or responses without mentioning specific companies.
-6. Return exactly 20 prompts in the prompts array. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.`,
+6. If the organization's location is in a non-English speaking country (e.g., Israel, Germany, France, or similar based on the provided data), incorporate the country name or origin into the prompts to make them location-specific, such as "Which Israeli company...", "Top French providers for...", "Best German [industry] companies that...", etc. Use the exact location from the data where appropriate.
+7. Return exactly 20 prompts in the prompts array. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.1.9s`,
       prompt: text, // Use the company analysis as the prompt
       temperature: 0.3,
     });
 
     const promptEndTime = Date.now();
     const promptDuration = promptEndTime - promptStartTime;
-    const totalDuration = promptEndTime - startTime;
+    const totalDuration = promptEndTime - overallStartTime;
 
     console.log(`✅ Prompt suggestions generated in ${promptDuration}ms`);
     console.log('');

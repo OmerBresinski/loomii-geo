@@ -20,7 +20,7 @@ const PROVIDERS = [
     key: 'Gemini',
     call: async (prompt: string) => {
       const { text, sources } = await generateText({
-        model: google('gemini-2.5-pro'),
+        model: google('gemini-2.5-flash'),
         tools: {
           google_search: google.tools.googleSearch({}),
         },
