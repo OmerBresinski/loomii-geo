@@ -31,7 +31,9 @@
     "seed:first-user": "tsx src/utils/seedFirstUser.ts",
     "seed:prompts": "tsx src/utils/seedPrompts.ts",
     "migrate:dates": "tsx src/utils/migratePromptRunDates.ts",
-    "delete:organization": "tsx src/utils/deleteOrganization.ts"
+    "delete:organization": "tsx src/utils/deleteOrganization.ts",
+    "cache:stats": "tsx src/utils/cacheMonitor.ts stats",
+    "cache:clear": "tsx src/utils/cacheMonitor.ts clear"
   },
   "keywords": [
     "express",

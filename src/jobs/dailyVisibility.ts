@@ -4,6 +4,7 @@ import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { perplexity } from '@ai-sdk/perplexity';
 import { prisma } from '@/utils/database';
+import { perplexityRateLimiter } from '../utils/perplexityRateLimiter';
 
 const genericSchema = z.object({
   text: z.string(),
@@ -305,19 +306,25 @@ async function findDomainWithAI(
   });
 
   try {
-    const domainResult = await generateObject({
-      schema: DomainLookupSchema,
-      model: perplexity('sonar'),
-      system: `You are an expert domain lookup engine for companies, universities, and organizations`,
-      prompt: `what's the domain of ${companyName}`,
-    });
+    // Use rate limiter with caching for Perplexity calls
+    const domain = await perplexityRateLimiter.lookupCompanyDomain(
+      companyName,
+      async () => {
+        return await generateObject({
+          schema: DomainLookupSchema,
+          model: perplexity('sonar'),
+          system: `You are an expert domain lookup engine for companies, universities, and organizations`,
+          prompt: `what's the domain of ${companyName}? they operate in the ${genre} industry`,
+        });
+      }
+    );
 
-    if (!domainResult.object.domain) {
+    if (!domain) {
       console.log(`    ❌ AI could not find domain for ${companyName}`);
       return null;
     }
 
-    const cleanedDomain = cleanDomain(domainResult.object.domain);
+    const cleanedDomain = cleanDomain(domain);
     console.log(`    ✅  AI suggested domain: ${cleanedDomain}`);
     return cleanedDomain;
   } catch (error) {
@@ -509,6 +516,22 @@ async function extractMentions(
   console.log(
     `✅ Successfully found and verified ${companyMentions.length}/${validCompanyNames.length} company domains`
   );
+
+  // Log rate limiter and cache statistics
+  const rateLimiterStatus = perplexityRateLimiter.getStatus();
+  const cacheStats = rateLimiterStatus.cache;
+  
+  if (rateLimiterStatus.queueLength > 0 || rateLimiterStatus.processing) {
+    console.log(
+      `⏳ Perplexity rate limiter: ${rateLimiterStatus.queueLength} queued, processing: ${rateLimiterStatus.processing}`
+    );
+  }
+  
+  if (cacheStats.totalLookups > 0) {
+    console.log(
+      `💾 Cache stats: ${cacheStats.hits} hits, ${cacheStats.misses} misses, ${cacheStats.hitRate} hit rate (${cacheStats.size}/${cacheStats.maxSize} entries)`
+    );
+  }
 
   return { companyMentions };
 }
