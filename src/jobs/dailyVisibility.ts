@@ -140,24 +140,26 @@ async function extractCompanyNamesOnly(
     schema: CompanyNamesSchema,
     model: google('gemini-2.5-flash'),
     temperature: 0.1, // Lower temperature for more consistent results
-    system: `You are an expert company name extraction specialist. Your job is to find EVERY SINGLE company name mentioned in the AI response text.
+    system: `You are an expert company name extraction specialist. Your job is to find company names that are RANKED, RECOMMENDED, or are the MAIN SUBJECT of the AI response text.
 
-YOUR MISSION: Extract ALL company names - do not miss any!
+YOUR MISSION: Extract ONLY companies that are RANKED, RECOMMENDED, or are the MAIN SUBJECT of the response - not just mentioned in passing!
 
 WHAT TO EXTRACT:
-- Every company mentioned by name (e.g., "HubSpot", "Salesforce", "Monday.com")
-- Companies in lists (e.g., "We compared Asana, Trello, and Notion")
-- Companies as examples (e.g., "Like what Slack did for messaging")
-- Companies with descriptors (e.g., "the CRM leader Salesforce" → extract "Salesforce")
-- Companies mentioned as competitors or alternatives
-- Companies mentioned in any context: positive, negative, neutral, or just in passing
-- Startup names, even if small or lesser-known
-- Software companies, SaaS platforms, tech companies
-- Companies mentioned with domains (e.g., "monday.com" → extract "Monday")
-- Companies with unusual capitalization (e.g., "HubSpot", "LinkedIn", "GitHub")
-- Universities and educational institutions (e.g., "Harvard University", "MIT", "Technion", "Stanford")
-- Research institutions and academic organizations
-- Any institution that could be considered a competitive entity
+- Companies that are ranked or listed (e.g., "Top CRM tools: 1. HubSpot, 2. Salesforce")
+- Companies that are recommended or suggested as solutions
+- Companies that are the main subject or focus of the response
+- Companies in comparative lists (e.g., "We compared Asana, Trello, and Notion")
+- Companies presented as alternatives or options to consider
+- Companies mentioned as market leaders or top choices
+- Companies in "best of" or "top" lists
+- Companies that are being evaluated or reviewed
+- Companies that are direct competitors being compared
+- Universities and educational institutions ONLY when they are ranked or recommended
+
+WHAT NOT TO EXTRACT:
+- Companies mentioned only as passing examples (e.g., "Like what Slack did...")
+- Companies mentioned in historical context without current relevance
+- Companies mentioned as brief references or analogies
 
 WHAT NOT TO EXTRACT:
 - Generic terms: "other companies", "various vendors", "many solutions"
@@ -173,28 +175,28 @@ LANGUAGE HANDLING:
 EXTRACTION EXAMPLES:
 
 Input: "The best CRM solutions include HubSpot, Salesforce, and Pipedrive"
-Extract: ["HubSpot", "Salesforce", "Pipedrive"]
+Extract: ["HubSpot", "Salesforce", "Pipedrive"] (all are ranked/recommended)
 
 Input: "Unlike Slack or Microsoft Teams, this tool focuses on..."
-Extract: ["Slack"] (exclude Microsoft as it's forbidden)
+Extract: [] (neither is ranked/recommended, just mentioned as examples)
 
-Input: "Companies like Notion, Asana, and monday.com are popular"
-Extract: ["Notion", "Asana", "Monday"]
+Input: "Top project management tools: 1. Notion, 2. Asana, 3. Monday.com"
+Extract: ["Notion", "Asana", "Monday"] (all are ranked)
 
 Input: "We compared it to what Zoom does for video calls"
-Extract: ["Zoom"]
+Extract: [] (Zoom is just a passing example, not being recommended)
 
 Input: "The startup reminded me of early Airbnb"
-Extract: ["Airbnb"]
+Extract: [] (Airbnb is just a historical example, not current recommendation)
 
-Input: "Universities like MIT, Stanford, and Technion are leading in AI research"
-Extract: ["MIT", "Stanford", "Technion"]
+Input: "Best universities for AI research: MIT, Stanford, and Technion"
+Extract: ["MIT", "Stanford", "Technion"] (all are ranked/recommended)
 
-Input: "Harvard University and Tel Aviv University collaborated on this project"
-Extract: ["Harvard University", "Tel Aviv University"]
+Input: "We recommend considering these alternatives: Slack, Discord, or HubSpot"
+Extract: ["Slack", "Discord", "HubSpot"] (all are recommended alternatives)
 
-Input: "Research from Berkeley and the Weizmann Institute shows..."
-Extract: ["Berkeley", "Weizmann Institute"]
+Input: "Like what Netflix did for streaming, this platform aims to revolutionize..."
+Extract: [] (Netflix is just an analogy, not a current recommendation)
 
 THOROUGHNESS CHECK:
 Before finishing, scan the text again for:
