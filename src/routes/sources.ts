@@ -10,6 +10,7 @@ router.use(requireAuth);
 router.get('/', async (req, res) => {
   const organizationId = req.auth?.organization?.id;
   const span = Number(((req.query.days as string) ?? '30').replace(/\D/g, ''));
+  const promptId = req.query.promptId ? Number(req.query.promptId) : undefined;
   
   // Pagination parameters
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -27,16 +28,40 @@ router.get('/', async (req, res) => {
       .json({ error: 'Company not found for this organization' });
   }
 
-  // Get total number of prompt runs for this organization in the time span
-  const totalPromptRuns = await prisma.promptRun.count({
-    where: {
-      prompt: {
+  // If promptId is provided, verify it belongs to this organization
+  if (promptId !== undefined) {
+    if (isNaN(promptId)) {
+      return res.status(400).json({ error: 'Invalid prompt ID' });
+    }
+
+    const prompt = await prisma.prompt.findFirst({
+      where: {
+        id: promptId,
         companyId: userCompany.id,
       },
-      runAt: {
-        gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
-      },
+    });
+
+    if (!prompt) {
+      return res.status(404).json({ 
+        error: 'Prompt not found or does not belong to your organization' 
+      });
+    }
+  }
+
+  // Build the where clause for prompt runs
+  const promptRunWhereClause = {
+    prompt: {
+      companyId: userCompany.id,
+      ...(promptId !== undefined && { id: promptId }),
     },
+    runAt: {
+      gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
+    },
+  };
+
+  // Get total number of prompt runs for this organization in the time span
+  const totalPromptRuns = await prisma.promptRun.count({
+    where: promptRunWhereClause,
   });
 
   // Get sources that have mentions from this organization's prompts only
@@ -46,14 +71,7 @@ router.get('/', async (req, res) => {
         some: {
           mentionDetails: {
             some: {
-              promptRun: {
-                prompt: {
-                  companyId: userCompany.id, // Only sources from this org's prompts
-                },
-                runAt: {
-                  gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
-                },
-              },
+              promptRun: promptRunWhereClause,
             },
           },
         },
@@ -64,14 +82,7 @@ router.get('/', async (req, res) => {
         include: {
           mentionDetails: {
             where: {
-              promptRun: {
-                prompt: {
-                  companyId: userCompany.id, // Filter mention details to this org only
-                },
-                runAt: {
-                  gte: new Date(Date.now() - span * 24 * 60 * 60 * 1000),
-                },
-              },
+              promptRun: promptRunWhereClause,
             },
             include: {
               company: true,
