@@ -403,7 +403,7 @@ async function findDomainFromSourceContent(
         );
 
         // Verify each found domain
-        for (const domain of foundDomains) {
+        for (const domain of Array.from(foundDomains)) {
           console.log(`      🔍 Verifying domain: ${domain}`);
           if (await verifyDomainExists(domain)) {
             console.log(
@@ -438,7 +438,22 @@ async function findOfficialDomain(
 ): Promise<string | null> {
   console.log(`  🔍 Finding domain for: ${companyName}`);
 
-  // Strategy 1: AI-powered lookup with verification
+  // Strategy 1: Check if company already exists in database
+  const existingCompany = await prisma.company.findFirst({
+    where: {
+      OR: [
+        { name: { equals: companyName, mode: 'insensitive' } },
+        { name: { contains: companyName, mode: 'insensitive' } }
+      ]
+    }
+  });
+
+  if (existingCompany) {
+    console.log(`    ✅ Found in database: ${existingCompany.domain}`);
+    return existingCompany.domain;
+  }
+
+  // Strategy 2: AI-powered lookup with verification
   const aiDomain = await findDomainWithAI(companyName, genre);
   if (aiDomain) {
     return aiDomain;
@@ -500,18 +515,22 @@ async function extractMentions(
 
   console.log('🔍 [3/3] Finding and verifying domains...');
 
-  // Find domains for each company sequentially (with verification)
-  const companyMentions: { name: string; domain: string }[] = [];
+  // Process companies in parallel with controlled concurrency
+  const DOMAIN_LOOKUP_CONCURRENCY = 5; // Process 5 companies at a time
+  
+  const domainLookupResults = await processWithConcurrency(
+    validCompanyNames,
+    async (companyName) => {
+      const domain = await findOfficialDomain(companyName, genre, sources);
+      return domain ? { name: companyName, domain } : null;
+    },
+    DOMAIN_LOOKUP_CONCURRENCY
+  );
 
-  for (const companyName of validCompanyNames) {
-    const domain = await findOfficialDomain(companyName, genre, sources);
-    if (domain) {
-      companyMentions.push({
-        name: companyName,
-        domain: domain,
-      });
-    }
-  }
+  // Filter out null results
+  const companyMentions = domainLookupResults.filter(
+    (result): result is { name: string; domain: string } => result !== null
+  );
 
   console.log(
     `✅ Successfully found and verified ${companyMentions.length}/${validCompanyNames.length} company domains`
@@ -594,6 +613,33 @@ async function extractWebsiteName(url: string): Promise<WebsiteName> {
     prompt: `URL: ${url}`,
   });
   return websiteResult.object;
+}
+
+// Utility function for processing items with controlled concurrency
+async function processWithConcurrency<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  
+  // Process items in chunks
+  for (let i = 0; i < items.length; i += concurrency) {
+    const chunk = items.slice(i, i + concurrency);
+    const chunkResults = await Promise.all(
+      chunk.map(async (item, chunkIndex) => ({
+        index: i + chunkIndex,
+        result: await processor(item)
+      }))
+    );
+    
+    // Place results in correct positions
+    chunkResults.forEach(({ index, result }) => {
+      results[index] = result;
+    });
+  }
+  
+  return results;
 }
 
 const upsertProvider = async (name: string) =>
@@ -850,27 +896,36 @@ export async function runDailyVisibilityJobForOrganization(
               }
             });
 
-            // Parallelize source page fetching
+            // Parallelize source page fetching to check which companies appear in each source
             const sourcePageResults = await Promise.allSettled(
               sources.map(async source => {
-                const sourcePage = await fetch(source.url);
-                const sourcePageText = await sourcePage.text();
+                try {
+                  const sourcePage = await fetch(source.url);
+                  const sourcePageText = (await sourcePage.text()).toLowerCase();
 
-                if (
-                  sourcePageText
-                    .toLowerCase()
-                    .includes(company.name.toLowerCase())
-                ) {
-                  return source.url;
+                  // Check which mentioned companies appear in this source
+                  const companiesInSource = uniqueCompanyMentions.filter(mention =>
+                    sourcePageText.includes(mention.name.toLowerCase())
+                  );
+
+                  return {
+                    url: source.url,
+                    companiesFound: companiesInSource
+                  };
+                } catch (error) {
+                  return {
+                    url: source.url,
+                    companiesFound: []
+                  };
                 }
-                return null;
               })
             );
 
-            const sourcesOfCompany: string[] = [];
+            // Create map of source URL to companies found in that source
+            const sourceToCompaniesMap = new Map();
             sourcePageResults.forEach(result => {
               if (result.status === 'fulfilled' && result.value) {
-                sourcesOfCompany.push(result.value);
+                sourceToCompaniesMap.set(result.value.url, result.value.companiesFound);
               } else if (result.status === 'rejected') {
                 console.error('Source page fetch failed:', result.reason);
               }
@@ -904,18 +959,27 @@ export async function runDailyVisibilityJobForOrganization(
                   `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
                 );
 
-                // Associate this company mention with all sources from this prompt run
+                // Associate this company mention with sources where this company appears
+                const sourcesWithThisCompany = [];
+                for (const [sourceUrl, companiesFound] of Array.from(sourceToCompaniesMap.entries())) {
+                  if (companiesFound.some((company: { name: string; domain: string }) => 
+                    company.name === m.name && company.domain === m.domain
+                  )) {
+                    sourcesWithThisCompany.push(sourceUrl);
+                  }
+                }
+
                 await Promise.allSettled(
-                  sourcesOfCompany.map(async source => {
-                    const sourceUrl = await prisma.sourceUrl.findUnique({
-                      where: { url: source },
+                  sourcesWithThisCompany.map(async sourceUrl => {
+                    const sourceUrlRecord = await prisma.sourceUrl.findUnique({
+                      where: { url: sourceUrl },
                     });
-                    if (sourceUrl) {
+                    if (sourceUrlRecord) {
                       await prisma.mentionDetail.create({
                         data: {
                           promptRunId: promptRun.id,
                           companyId,
-                          sourceUrlId: sourceUrl.id,
+                          sourceUrlId: sourceUrlRecord.id,
                           count: 1, // presence flag
                         },
                       });
@@ -1170,29 +1234,36 @@ export async function runDailyVisibilityJob() {
               }
             });
 
-            // Parallelize source page fetching
+            // Parallelize source page fetching to check which companies appear in each source
             const sourcePageResults = await Promise.allSettled(
               sources.map(async source => {
-                const sourcePage = await fetch(source.url);
-                const sourcePageText = await sourcePage.text();
+                try {
+                  const sourcePage = await fetch(source.url);
+                  const sourcePageText = (await sourcePage.text()).toLowerCase();
 
-                console.log({ sourcePageText });
+                  // Check which mentioned companies appear in this source
+                  const companiesInSource = uniqueCompanyMentions.filter(mention =>
+                    sourcePageText.includes(mention.name.toLowerCase())
+                  );
 
-                if (
-                  sourcePageText
-                    .toLowerCase()
-                    .includes(company.name.toLowerCase())
-                ) {
-                  return source.url;
+                  return {
+                    url: source.url,
+                    companiesFound: companiesInSource
+                  };
+                } catch (error) {
+                  return {
+                    url: source.url,
+                    companiesFound: []
+                  };
                 }
-                return null;
               })
             );
 
-            const sourcesOfCompany: string[] = [];
+            // Create map of source URL to companies found in that source
+            const sourceToCompaniesMap = new Map();
             sourcePageResults.forEach(result => {
               if (result.status === 'fulfilled' && result.value) {
-                sourcesOfCompany.push(result.value);
+                sourceToCompaniesMap.set(result.value.url, result.value.companiesFound);
               } else if (result.status === 'rejected') {
                 console.error('Source page fetch failed:', result.reason);
               }
@@ -1226,18 +1297,27 @@ export async function runDailyVisibilityJob() {
                   `        - Created CompanyMention for ${m.name} (ID: ${companyMention.id})`
                 );
 
-                // Associate this company mention with all sources from this prompt run
+                // Associate this company mention with sources where this company appears
+                const sourcesWithThisCompany = [];
+                for (const [sourceUrl, companiesFound] of Array.from(sourceToCompaniesMap.entries())) {
+                  if (companiesFound.some((company: { name: string; domain: string }) => 
+                    company.name === m.name && company.domain === m.domain
+                  )) {
+                    sourcesWithThisCompany.push(sourceUrl);
+                  }
+                }
+
                 await Promise.allSettled(
-                  sourcesOfCompany.map(async source => {
-                    const sourceUrl = await prisma.sourceUrl.findUnique({
-                      where: { url: source },
+                  sourcesWithThisCompany.map(async sourceUrl => {
+                    const sourceUrlRecord = await prisma.sourceUrl.findUnique({
+                      where: { url: sourceUrl },
                     });
-                    if (sourceUrl) {
+                    if (sourceUrlRecord) {
                       await prisma.mentionDetail.create({
                         data: {
                           promptRunId: promptRun.id,
                           companyId,
-                          sourceUrlId: sourceUrl.id,
+                          sourceUrlId: sourceUrlRecord.id,
                           count: 1, // presence flag
                         },
                       });
