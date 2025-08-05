@@ -25,6 +25,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
     const validatedData = registerSchema.parse(req.body);
 
+    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email: validatedData.email },
     });
@@ -34,6 +35,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Check if organization already exists
     const existingOrg = await prisma.organization.findUnique({
       where: { domain: validatedData.organizationDomain },
     });
@@ -43,32 +45,67 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Check if company already exists
+    const existingCompany = await prisma.company.findUnique({
+      where: { domain: validatedData.organizationDomain },
+    });
+
+    if (existingCompany && existingCompany.organizationId) {
+      res.status(400).json({ 
+        error: 'Company already registered',
+        message: 'This company domain is already registered with another organization'
+      });
+      return;
+    }
+
     const hashedPassword = await bcrypt.hash(validatedData.password, 12);
 
-    const organization = await prisma.organization.create({
-      data: {
-        name: validatedData.organizationName,
-        domain: validatedData.organizationDomain,
-      },
+    // Execute everything in a transaction to ensure atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // Create organization
+      const organization = await tx.organization.create({
+        data: {
+          name: validatedData.organizationName,
+          domain: validatedData.organizationDomain,
+        },
+      });
+
+      let company;
+      if (existingCompany && !existingCompany.organizationId) {
+        // Update existing company to link it to the organization
+        company = await tx.company.update({
+          where: { id: existingCompany.id },
+          data: {
+            organizationId: organization.id,
+            name: validatedData.organizationName, // Update name in case it's different
+          },
+        });
+      } else {
+        // Create new company
+        company = await tx.company.create({
+          data: {
+            name: validatedData.organizationName,
+            domain: validatedData.organizationDomain,
+            organizationId: organization.id,
+          },
+        });
+      }
+
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          email: validatedData.email,
+          password: hashedPassword,
+          firstName: validatedData.firstName,
+          lastName: validatedData.lastName,
+          organizationId: organization.id,
+        },
+      });
+
+      return { organization, company, user };
     });
 
-    const company = await prisma.company.create({
-      data: {
-        name: validatedData.organizationName,
-        domain: validatedData.organizationDomain,
-        organizationId: organization.id,
-      },
-    });
-
-    const user = await prisma.user.create({
-      data: {
-        email: validatedData.email,
-        password: hashedPassword,
-        firstName: validatedData.firstName,
-        lastName: validatedData.lastName,
-        organizationId: organization.id,
-      },
-    });
+    const { organization, company, user } = result;
 
     const token = jwt.sign(
       {
