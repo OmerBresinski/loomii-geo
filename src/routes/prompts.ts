@@ -137,10 +137,17 @@ router.get('/', async (req, res) => {
     const topCompetitors = Array.from(competitorVisibility.values())
       .sort((a, b) => b.visibility - a.visibility)
       .slice(0, 5)
-      .map(comp => ({
-        name: comp.domain.split('.')[0], // Extract name from domain (e.g., "coinbase" from "coinbase.com")
-        domain: comp.domain,
-      }));
+      .map(comp => {
+        // Find the actual company name from the mentions data
+        const companyMention = prompt.promptRuns
+          .flatMap(run => run.companyMentions)
+          .find(mention => mention.companyId === comp.companyId);
+        
+        return {
+          name: companyMention?.company.name || comp.domain.split('.')[0],
+          domain: comp.domain,
+        };
+      });
 
     // Format tags
     const tags = prompt.promptTags.map(pt => ({
