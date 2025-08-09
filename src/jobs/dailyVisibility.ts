@@ -443,14 +443,58 @@ async function findOfficialDomain(
     where: {
       OR: [
         { name: { equals: companyName, mode: 'insensitive' } },
-        { name: { contains: companyName, mode: 'insensitive' } }
-      ]
-    }
+        { name: { contains: companyName, mode: 'insensitive' } },
+      ],
+    },
   });
 
   if (existingCompany) {
     console.log(`    ✅ Found in database: ${existingCompany.domain}`);
     return existingCompany.domain;
+  }
+
+  // Strategy 1.5: Domain search API lookup
+  try {
+    console.log(
+      `    🌐 Checking domain search API for: ${companyName}, ${genre}`
+    );
+    const domainSearchUrl = `https://domains.loomii.ai/api/search?company=${encodeURIComponent(`${companyName}, ${genre}`)}`;
+
+    const domainResponse = await fetch(domainSearchUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(10000), // 10 second timeout
+    });
+
+    if (domainResponse.ok) {
+      interface DomainSearchResult {
+        domain: string;
+        rank: number;
+      }
+
+      interface DomainSearchResponse {
+        results: DomainSearchResult[];
+      }
+
+      const domainData = (await domainResponse.json()) as DomainSearchResponse;
+
+      // The API returns { results: [{ domain: "example.com", rank: 1 }, ...] }
+      if (domainData && domainData.results && domainData.results.length > 0) {
+        // Take the highest ranked domain (first in the array)
+        const topResult = domainData.results[0];
+        console.log(
+          `    ✅ Found via domain search API: ${topResult.domain} (rank: ${topResult.rank})`
+        );
+        return topResult.domain;
+      }
+    }
+  } catch (error) {
+    console.log(
+      `    ⚠️  Domain search API failed for ${companyName}:`,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 
   // Strategy 2: AI-powered lookup with verification
@@ -517,10 +561,10 @@ async function extractMentions(
 
   // Process companies in parallel with controlled concurrency
   const DOMAIN_LOOKUP_CONCURRENCY = 5; // Process 5 companies at a time
-  
+
   const domainLookupResults = await processWithConcurrency(
     validCompanyNames,
-    async (companyName) => {
+    async companyName => {
       const domain = await findOfficialDomain(companyName, genre, sources);
       return domain ? { name: companyName, domain } : null;
     },
@@ -622,23 +666,23 @@ async function processWithConcurrency<T, R>(
   concurrency: number
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
-  
+
   // Process items in chunks
   for (let i = 0; i < items.length; i += concurrency) {
     const chunk = items.slice(i, i + concurrency);
     const chunkResults = await Promise.all(
       chunk.map(async (item, chunkIndex) => ({
         index: i + chunkIndex,
-        result: await processor(item)
+        result: await processor(item),
       }))
     );
-    
+
     // Place results in correct positions
     chunkResults.forEach(({ index, result }) => {
       results[index] = result;
     });
   }
-  
+
   return results;
 }
 
@@ -901,21 +945,24 @@ export async function runDailyVisibilityJobForOrganization(
               sources.map(async source => {
                 try {
                   const sourcePage = await fetch(source.url);
-                  const sourcePageText = (await sourcePage.text()).toLowerCase();
+                  const sourcePageText = (
+                    await sourcePage.text()
+                  ).toLowerCase();
 
                   // Check which mentioned companies appear in this source
-                  const companiesInSource = uniqueCompanyMentions.filter(mention =>
-                    sourcePageText.includes(mention.name.toLowerCase())
+                  const companiesInSource = uniqueCompanyMentions.filter(
+                    mention =>
+                      sourcePageText.includes(mention.name.toLowerCase())
                   );
 
                   return {
                     url: source.url,
-                    companiesFound: companiesInSource
+                    companiesFound: companiesInSource,
                   };
                 } catch (error) {
                   return {
                     url: source.url,
-                    companiesFound: []
+                    companiesFound: [],
                   };
                 }
               })
@@ -925,7 +972,10 @@ export async function runDailyVisibilityJobForOrganization(
             const sourceToCompaniesMap = new Map();
             sourcePageResults.forEach(result => {
               if (result.status === 'fulfilled' && result.value) {
-                sourceToCompaniesMap.set(result.value.url, result.value.companiesFound);
+                sourceToCompaniesMap.set(
+                  result.value.url,
+                  result.value.companiesFound
+                );
               } else if (result.status === 'rejected') {
                 console.error('Source page fetch failed:', result.reason);
               }
@@ -961,10 +1011,15 @@ export async function runDailyVisibilityJobForOrganization(
 
                 // Associate this company mention with sources where this company appears
                 const sourcesWithThisCompany = [];
-                for (const [sourceUrl, companiesFound] of Array.from(sourceToCompaniesMap.entries())) {
-                  if (companiesFound.some((company: { name: string; domain: string }) => 
-                    company.name === m.name && company.domain === m.domain
-                  )) {
+                for (const [sourceUrl, companiesFound] of Array.from(
+                  sourceToCompaniesMap.entries()
+                )) {
+                  if (
+                    companiesFound.some(
+                      (company: { name: string; domain: string }) =>
+                        company.name === m.name && company.domain === m.domain
+                    )
+                  ) {
                     sourcesWithThisCompany.push(sourceUrl);
                   }
                 }
@@ -1239,21 +1294,24 @@ export async function runDailyVisibilityJob() {
               sources.map(async source => {
                 try {
                   const sourcePage = await fetch(source.url);
-                  const sourcePageText = (await sourcePage.text()).toLowerCase();
+                  const sourcePageText = (
+                    await sourcePage.text()
+                  ).toLowerCase();
 
                   // Check which mentioned companies appear in this source
-                  const companiesInSource = uniqueCompanyMentions.filter(mention =>
-                    sourcePageText.includes(mention.name.toLowerCase())
+                  const companiesInSource = uniqueCompanyMentions.filter(
+                    mention =>
+                      sourcePageText.includes(mention.name.toLowerCase())
                   );
 
                   return {
                     url: source.url,
-                    companiesFound: companiesInSource
+                    companiesFound: companiesInSource,
                   };
                 } catch (error) {
                   return {
                     url: source.url,
-                    companiesFound: []
+                    companiesFound: [],
                   };
                 }
               })
@@ -1263,7 +1321,10 @@ export async function runDailyVisibilityJob() {
             const sourceToCompaniesMap = new Map();
             sourcePageResults.forEach(result => {
               if (result.status === 'fulfilled' && result.value) {
-                sourceToCompaniesMap.set(result.value.url, result.value.companiesFound);
+                sourceToCompaniesMap.set(
+                  result.value.url,
+                  result.value.companiesFound
+                );
               } else if (result.status === 'rejected') {
                 console.error('Source page fetch failed:', result.reason);
               }
@@ -1299,10 +1360,15 @@ export async function runDailyVisibilityJob() {
 
                 // Associate this company mention with sources where this company appears
                 const sourcesWithThisCompany = [];
-                for (const [sourceUrl, companiesFound] of Array.from(sourceToCompaniesMap.entries())) {
-                  if (companiesFound.some((company: { name: string; domain: string }) => 
-                    company.name === m.name && company.domain === m.domain
-                  )) {
+                for (const [sourceUrl, companiesFound] of Array.from(
+                  sourceToCompaniesMap.entries()
+                )) {
+                  if (
+                    companiesFound.some(
+                      (company: { name: string; domain: string }) =>
+                        company.name === m.name && company.domain === m.domain
+                    )
+                  ) {
                     sourcesWithThisCompany.push(sourceUrl);
                   }
                 }
