@@ -484,10 +484,25 @@ async function findOfficialDomain(
       if (domainData && domainData.results && domainData.results.length > 0) {
         // Take the highest ranked domain (first in the array)
         const topResult = domainData.results[0];
+
+        // Parse the domain to remove protocol, www, and path
+        let parsedDomain = topResult.domain;
+
+        // Remove protocol (http://, https://)
+        parsedDomain = parsedDomain.replace(/^https?:\/\//, '');
+
+        // Remove www.
+        parsedDomain = parsedDomain.replace(/^www\./, '');
+
+        // Remove path, query params, and trailing slash
+        parsedDomain = parsedDomain.split('/')[0];
+        parsedDomain = parsedDomain.split('?')[0];
+        parsedDomain = parsedDomain.split('#')[0];
+
         console.log(
-          `    ✅ Found via domain search API: ${topResult.domain} (rank: ${topResult.rank})`
+          `    ✅ Found via domain search API: ${parsedDomain} (rank: ${topResult.rank})`
         );
-        return topResult.domain;
+        return parsedDomain;
       }
     }
   } catch (error) {
