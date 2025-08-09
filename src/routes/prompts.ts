@@ -15,6 +15,12 @@ router.get('/', async (req, res) => {
   const organizationId = req.auth?.organization?.id;
   const span = Number(((req.query.days as string) ?? '30').replace(/\D/g, ''));
   const since = subDays(new Date(), span);
+  
+  // Parse filtering parameters
+  const isActive = req.query.isActive !== undefined ? req.query.isActive === 'true' : undefined;
+  const companyIds = req.query.companyIds ? 
+    (Array.isArray(req.query.companyIds) ? req.query.companyIds.map(Number) : [Number(req.query.companyIds)]) : 
+    undefined;
 
   const company = await prisma.company.findFirst({
     where: { organizationId },
@@ -25,7 +31,10 @@ router.get('/', async (req, res) => {
   }
 
   const prompts = await prisma.prompt.findMany({
-    where: { companyId: company.id },
+    where: { 
+      companyId: company.id,
+      ...(isActive !== undefined && { isActive }),
+    },
     include: {
       promptTags: {
         include: {
@@ -144,6 +153,7 @@ router.get('/', async (req, res) => {
           .find(mention => mention.companyId === comp.companyId);
         
         return {
+          companyId: comp.companyId,
           name: companyMention?.company.name || comp.domain.split('.')[0],
           domain: comp.domain,
         };
@@ -170,7 +180,17 @@ router.get('/', async (req, res) => {
     };
   });
 
-  return res.json(promptData);
+  // Apply company ID filtering if provided
+  let filteredPromptData = promptData;
+  if (companyIds && companyIds.length > 0) {
+    filteredPromptData = promptData.filter(prompt =>
+      prompt.topCompetitors.some(competitor =>
+        companyIds.includes(competitor.companyId)
+      )
+    );
+  }
+
+  return res.json(filteredPromptData);
 });
 
 router.get('/runs/:promptId', async (req, res) => {
