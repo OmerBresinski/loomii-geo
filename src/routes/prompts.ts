@@ -587,10 +587,10 @@ router.get('/suggestPrompts', async (req: Request, res: Response) => {
       // Step 1: Analyze the company
       console.log('Generating new organization analysis');
       const { text } = await generateText({
-        model: google('gemini-2.5-flash'),
+        model: 'google/gemini-2.5-flash',
         tools: {
           google_search: google.tools.googleSearch({}),
-        },
+        } as any,
         system: `You are a business analyst expert. Analyze companies by visiting their website and provide comprehensive business intelligence. Always be factual and thorough.`,
         prompt: `Please analyze the company website at ${organization.domain} and provide a detailed analysis with the following information:
 
@@ -636,7 +636,7 @@ Company domain to analyze: ${organization.domain}`,
     });
 
     const { object: promptSuggestions } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: 'google/gemini-2.5-flash',
       schema: promptSuggestionsSchema,
       system: `You are an expert in Generative Engine Optimization (GEO) and AI-driven search monitoring. Your task is to generate 20 high-value prompt suggestions for users to input into a GEO tracking system. These prompts should be designed to help organizations monitor their visibility, competitor presence, and sentiment in responses from generative AI providers (e.g., ChatGPT, Gemini, Grok, Perplexity).
 

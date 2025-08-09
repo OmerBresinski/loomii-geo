@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { generateText, generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { generateText, generateObject, Tool } from 'ai';
 import { google } from '@ai-sdk/google';
 import { perplexity } from '@ai-sdk/perplexity';
 import { prisma } from '@/utils/database';
@@ -18,13 +17,15 @@ const genericSchema = z.object({
 
 const PROVIDERS = [
   {
-    key: 'Gemini',
+    key: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    provider: 'google',
     call: async (prompt: string) => {
       const { text, sources } = await generateText({
-        model: google('gemini-2.5-flash'),
+        model: 'google/gemini-2.5-flash',
         tools: {
           google_search: google.tools.googleSearch({}),
-        },
+        } as any,
         prompt,
         temperature: 0.3,
         maxRetries: 3,
@@ -97,7 +98,7 @@ async function extractCompanyGenre(
 
   const result = await generateObject({
     schema: GenreExtractionSchema,
-    model: google('gemini-2.5-flash'),
+    model: 'google/gemini-2.5-flash',
     system: `Based on the prompt and response, identify what category/genre of companies is being discussed.
 
 Examples of good genres:
@@ -139,7 +140,7 @@ async function extractCompanyNamesOnly(
 
   const companyResult = await generateObject({
     schema: CompanyNamesSchema,
-    model: google('gemini-2.5-flash'),
+    model: 'google/gemini-2.5-flash',
     temperature: 0.1, // Lower temperature for more consistent results
     system: `You are an expert company name extraction specialist. Your job is to find company names that are RANKED, RECOMMENDED, or are the MAIN SUBJECT of the AI response text.
 
@@ -620,7 +621,7 @@ async function scoreSentiments(
 ): Promise<Sentiment> {
   const sentimentResult = await generateObject({
     schema: SentimentSchema,
-    model: google('gemini-2.5-pro'),
+    model: 'google/gemini-2.5-pro',
     system:
       `Rate the overall sentiment toward each company on a −1 (very negative) to +1 (very positive) scale.\n` +
       `Return JSON {sentiments:[{name,domain,sentiment}]}.`,
@@ -647,7 +648,7 @@ function cleanDomain(domain: string): string {
 async function extractWebsiteName(url: string): Promise<WebsiteName> {
   const websiteResult = await generateObject({
     schema: WebsiteNameSchema,
-    model: google('gemini-2.5-flash'),
+    model: 'google/gemini-2.5-flash',
     system: `
     You are a website name extraction engine.
 
