@@ -702,6 +702,84 @@ Return format: Each prompt should have:
   }
 });
 
+// PATCH /prompts/:promptId - Enable/disable a prompt
+router.patch('/:promptId', async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.auth?.organization?.id;
+    const promptId = Number(req.params.promptId);
+    const { isActive } = req.body;
+
+    if (!promptId || isNaN(promptId)) {
+      return res.status(400).json({
+        error: 'Valid promptId parameter is required',
+      });
+    }
+
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        error: 'isActive must be a boolean value',
+      });
+    }
+
+    // Get the organization's company
+    const company = await prisma.company.findFirst({
+      where: { organizationId },
+    });
+
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Verify the prompt belongs to this company
+    const existingPrompt = await prisma.prompt.findFirst({
+      where: {
+        id: promptId,
+        companyId: company.id,
+      },
+    });
+
+    if (!existingPrompt) {
+      return res.status(404).json({
+        error: 'Prompt not found or does not belong to your organization',
+      });
+    }
+
+    // Update the prompt
+    const updatedPrompt = await prisma.prompt.update({
+      where: { id: promptId },
+      data: { isActive },
+      include: {
+        promptTags: {
+          include: {
+            tag: true,
+          },
+        },
+      },
+    });
+
+    // Format the response
+    const response = {
+      promptId: updatedPrompt.id,
+      text: updatedPrompt.text,
+      isActive: updatedPrompt.isActive,
+      createdAt: updatedPrompt.createdAt,
+      tags: updatedPrompt.promptTags.map(pt => ({
+        id: pt.tag.id,
+        label: pt.tag.label,
+        color: pt.tag.color,
+      })),
+    };
+
+    return res.json(response);
+  } catch (error) {
+    console.error('Error updating prompt:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'Failed to update prompt',
+    });
+  }
+});
+
 // POST /prompts/bulk - Create multiple prompts at once
 router.post('/bulk', async (req: Request, res: Response) => {
   try {
