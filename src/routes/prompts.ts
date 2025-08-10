@@ -571,6 +571,10 @@ router.get('/suggestPrompts', async (req: Request, res: Response) => {
       });
     }
 
+    // Parse count parameter (default: 3, max: 10)
+    const countParam = req.query.count ? Number(req.query.count) : 3;
+    const count = Math.min(Math.max(1, countParam), 10); // Clamp between 1 and 10
+
     const organization = await prisma.organization.findUnique({
       where: { id: organizationId },
       include: { summary: true },
@@ -637,13 +641,13 @@ Company domain to analyze: ${organization.domain}`,
       prompts: z.array(z.object({
         text: z.string(),
         suggestedTagIds: z.array(z.number()).optional(),
-      })).min(20).max(20),
+      })).min(count).max(count),
     });
 
     const { object: promptSuggestions } = await generateObject({
       model: 'google/gemini-2.5-flash',
       schema: promptSuggestionsSchema,
-      system: `You are an expert in Generative Engine Optimization (GEO) and AI-driven search monitoring. Your task is to generate 20 high-value prompt suggestions for users to input into a GEO tracking system. These prompts should be designed to help organizations monitor their visibility, competitor presence, and sentiment in responses from generative AI providers (e.g., ChatGPT, Gemini, Grok, Perplexity).
+      system: `You are an expert in Generative Engine Optimization (GEO) and AI-driven search monitoring. Your task is to generate ${count} high-value prompt suggestions for users to input into a GEO tracking system. These prompts should be designed to help organizations monitor their visibility, competitor presence, and sentiment in responses from generative AI providers (e.g., ChatGPT, Gemini, Grok, Perplexity).
 
 You will be provided with extracted data about the organization, including details like company name, industry/field, location, key products/services, target audience, and any notable competitors or unique selling points (USPs) inferred from their domain URL.
 
@@ -666,7 +670,7 @@ Using this data, create prompts that are:
    - "Which Japanese companies offer the best..."
    If the company is from an English-speaking country (US, UK, Canada, Australia), create generic prompts without country identifiers.
 7. For each prompt, suggest relevant tags from the available tag options. Analyze the prompt content and select 1-3 most relevant tag IDs. If no tags are relevant, leave suggestedTagIds empty.
-8. Return exactly 20 prompts in the prompts array with their suggested tags. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.
+8. Return exactly ${count} prompts in the prompts array with their suggested tags. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.
 
 AVAILABLE TAGS:
 ${availableTags.map(tag => `ID: ${tag.id}, Label: "${tag.label}"`).join('\n')}
