@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { generateText, generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { generateText, generateObject, Tool } from 'ai';
 import { google } from '@ai-sdk/google';
 import { perplexity } from '@ai-sdk/perplexity';
 import { prisma } from '@/utils/database';
 import { perplexityRateLimiter } from '../utils/perplexityRateLimiter';
+import { openai } from '@ai-sdk/openai';
 
 const genericSchema = z.object({
   text: z.string(),
@@ -18,13 +18,38 @@ const genericSchema = z.object({
 
 const PROVIDERS = [
   {
-    key: 'Gemini',
+    key: 'chatgpt-4o',
+    label: 'ChatGPT 4o',
+    provider: 'openai',
     call: async (prompt: string) => {
       const { text, sources } = await generateText({
-        model: google('gemini-2.5-flash'),
+        model: 'openai/gpt-4o',
+        prompt,
+        temperature: 0.3,
+        tools: {
+          web_search_preview: openai.tools.webSearchPreview({
+            searchContextSize: 'high',
+          }),
+        },
+        toolChoice: { type: 'tool', toolName: 'web_search_preview' },
+      });
+
+      return { text, sources } as {
+        text: string;
+        sources: { url: string; title: string }[];
+      };
+    },
+  },
+  {
+    key: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    provider: 'google',
+    call: async (prompt: string) => {
+      const { text, sources } = await generateText({
+        model: 'google/gemini-2.5-flash',
         tools: {
           google_search: google.tools.googleSearch({}),
-        },
+        } as any,
         prompt,
         temperature: 0.3,
         maxRetries: 3,
@@ -97,7 +122,7 @@ async function extractCompanyGenre(
 
   const result = await generateObject({
     schema: GenreExtractionSchema,
-    model: google('gemini-2.5-flash'),
+    model: 'google/gemini-2.5-flash',
     system: `Based on the prompt and response, identify what category/genre of companies is being discussed.
 
 Examples of good genres:
@@ -139,7 +164,7 @@ async function extractCompanyNamesOnly(
 
   const companyResult = await generateObject({
     schema: CompanyNamesSchema,
-    model: google('gemini-2.5-flash'),
+    model: 'google/gemini-2.5-flash',
     temperature: 0.1, // Lower temperature for more consistent results
     system: `You are an expert company name extraction specialist. Your job is to find company names that are RANKED, RECOMMENDED, or are the MAIN SUBJECT of the AI response text.
 
@@ -167,6 +192,7 @@ WHAT NOT TO EXTRACT:
 - These big tech giants: Google, Apple, Facebook, Meta, Microsoft, Amazon, YouTube, Instagram, WhatsApp, Alphabet
 - Domains/URLs without company context
 - Product categories (e.g., "CRM software" - only extract if it's a company name)
+- Features of companies, for example, Safeguard by SentinelOne (should be just SentinelOne), Adaptive Shield by Crowdstrike (should be just Crowdstrike)
 
 LANGUAGE HANDLING:
 - If company name is in Hebrew, translate to English
@@ -465,7 +491,7 @@ async function findOfficialDomain(
       headers: {
         Accept: 'application/json',
       },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
+      signal: AbortSignal.timeout(20000), // 10 second timeout
     });
 
     if (domainResponse.ok) {
@@ -620,7 +646,7 @@ async function scoreSentiments(
 ): Promise<Sentiment> {
   const sentimentResult = await generateObject({
     schema: SentimentSchema,
-    model: google('gemini-2.5-pro'),
+    model: 'google/gemini-2.5-pro',
     system:
       `Rate the overall sentiment toward each company on a −1 (very negative) to +1 (very positive) scale.\n` +
       `Return JSON {sentiments:[{name,domain,sentiment}]}.`,
@@ -647,7 +673,7 @@ function cleanDomain(domain: string): string {
 async function extractWebsiteName(url: string): Promise<WebsiteName> {
   const websiteResult = await generateObject({
     schema: WebsiteNameSchema,
-    model: google('gemini-2.5-flash'),
+    model: 'google/gemini-2.5-flash',
     system: `
     You are a website name extraction engine.
 

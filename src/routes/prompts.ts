@@ -235,6 +235,7 @@ router.get('/runs/:promptId', async (req, res) => {
           company: true,
         },
       },
+      provider: true,
     },
     orderBy: {
       runAt: 'desc',
@@ -355,6 +356,10 @@ router.get('/runs/:promptId', async (req, res) => {
     return {
       runId: currentRun.id,
       runAt: currentRun.runAt,
+      aiProvider: currentRun.provider ? {
+        id: currentRun.provider.id,
+        name: currentRun.provider.name,
+      } : null,
       totalRuns: totalRunsUpToDate,
       organizationVisibility,
       organizationSentiment,
@@ -566,6 +571,10 @@ router.get('/suggestPrompts', async (req: Request, res: Response) => {
       });
     }
 
+    // Parse count parameter (default: 3, max: 10)
+    const countParam = req.query.count ? Number(req.query.count) : 3;
+    const count = Math.min(Math.max(1, countParam), 10); // Clamp between 1 and 10
+
     const organization = await prisma.organization.findUnique({
       where: { id: organizationId },
       include: { summary: true },
@@ -587,10 +596,10 @@ router.get('/suggestPrompts', async (req: Request, res: Response) => {
       // Step 1: Analyze the company
       console.log('Generating new organization analysis');
       const { text } = await generateText({
-        model: google('gemini-2.5-flash'),
+        model: 'google/gemini-2.5-flash',
         tools: {
           google_search: google.tools.googleSearch({}),
-        },
+        } as any,
         system: `You are a business analyst expert. Analyze companies by visiting their website and provide comprehensive business intelligence. Always be factual and thorough.`,
         prompt: `Please analyze the company website at ${organization.domain} and provide a detailed analysis with the following information:
 
@@ -632,13 +641,13 @@ Company domain to analyze: ${organization.domain}`,
       prompts: z.array(z.object({
         text: z.string(),
         suggestedTagIds: z.array(z.number()).optional(),
-      })).min(20).max(20),
+      })).min(count).max(count),
     });
 
     const { object: promptSuggestions } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: 'google/gemini-2.5-flash',
       schema: promptSuggestionsSchema,
-      system: `You are an expert in Generative Engine Optimization (GEO) and AI-driven search monitoring. Your task is to generate 20 high-value prompt suggestions for users to input into a GEO tracking system. These prompts should be designed to help organizations monitor their visibility, competitor presence, and sentiment in responses from generative AI providers (e.g., ChatGPT, Gemini, Grok, Perplexity).
+      system: `You are an expert in Generative Engine Optimization (GEO) and AI-driven search monitoring. Your task is to generate ${count} high-value prompt suggestions for users to input into a GEO tracking system. These prompts should be designed to help organizations monitor their visibility, competitor presence, and sentiment in responses from generative AI providers (e.g., ChatGPT, Gemini, Grok, Perplexity).
 
 You will be provided with extracted data about the organization, including details like company name, industry/field, location, key products/services, target audience, and any notable competitors or unique selling points (USPs) inferred from their domain URL.
 
@@ -661,7 +670,7 @@ Using this data, create prompts that are:
    - "Which Japanese companies offer the best..."
    If the company is from an English-speaking country (US, UK, Canada, Australia), create generic prompts without country identifiers.
 7. For each prompt, suggest relevant tags from the available tag options. Analyze the prompt content and select 1-3 most relevant tag IDs. If no tags are relevant, leave suggestedTagIds empty.
-8. Return exactly 20 prompts in the prompts array with their suggested tags. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.
+8. Return exactly ${count} prompts in the prompts array with their suggested tags. Ensure variety to cover different aspects like market share, customer pain points, innovation, and emerging trends.
 
 AVAILABLE TAGS:
 ${availableTags.map(tag => `ID: ${tag.id}, Label: "${tag.label}"`).join('\n')}
@@ -693,6 +702,84 @@ Return format: Each prompt should have:
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Failed to generate company analysis',
+    });
+  }
+});
+
+// PATCH /prompts/:promptId - Enable/disable a prompt
+router.patch('/:promptId', async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.auth?.organization?.id;
+    const promptId = Number(req.params.promptId);
+    const { isActive } = req.body;
+
+    if (!promptId || isNaN(promptId)) {
+      return res.status(400).json({
+        error: 'Valid promptId parameter is required',
+      });
+    }
+
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        error: 'isActive must be a boolean value',
+      });
+    }
+
+    // Get the organization's company
+    const company = await prisma.company.findFirst({
+      where: { organizationId },
+    });
+
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Verify the prompt belongs to this company
+    const existingPrompt = await prisma.prompt.findFirst({
+      where: {
+        id: promptId,
+        companyId: company.id,
+      },
+    });
+
+    if (!existingPrompt) {
+      return res.status(404).json({
+        error: 'Prompt not found or does not belong to your organization',
+      });
+    }
+
+    // Update the prompt
+    const updatedPrompt = await prisma.prompt.update({
+      where: { id: promptId },
+      data: { isActive },
+      include: {
+        promptTags: {
+          include: {
+            tag: true,
+          },
+        },
+      },
+    });
+
+    // Format the response
+    const response = {
+      promptId: updatedPrompt.id,
+      text: updatedPrompt.text,
+      isActive: updatedPrompt.isActive,
+      createdAt: updatedPrompt.createdAt,
+      tags: updatedPrompt.promptTags.map(pt => ({
+        id: pt.tag.id,
+        label: pt.tag.label,
+        color: pt.tag.color,
+      })),
+    };
+
+    return res.json(response);
+  } catch (error) {
+    console.error('Error updating prompt:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'Failed to update prompt',
     });
   }
 });
