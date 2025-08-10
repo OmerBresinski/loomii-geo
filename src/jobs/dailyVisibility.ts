@@ -4,6 +4,7 @@ import { google } from '@ai-sdk/google';
 import { perplexity } from '@ai-sdk/perplexity';
 import { prisma } from '@/utils/database';
 import { perplexityRateLimiter } from '../utils/perplexityRateLimiter';
+import { openai } from '@ai-sdk/openai';
 
 const genericSchema = z.object({
   text: z.string(),
@@ -16,6 +17,29 @@ const genericSchema = z.object({
 });
 
 const PROVIDERS = [
+  {
+    key: 'chatgpt-4o',
+    label: 'ChatGPT 4o',
+    provider: 'openai',
+    call: async (prompt: string) => {
+      const { text, sources } = await generateText({
+        model: 'openai/gpt-4o',
+        prompt,
+        temperature: 0.3,
+        tools: {
+          web_search_preview: openai.tools.webSearchPreview({
+            searchContextSize: 'high',
+          }),
+        },
+        toolChoice: { type: 'tool', toolName: 'web_search_preview' },
+      });
+
+      return { text, sources } as {
+        text: string;
+        sources: { url: string; title: string }[];
+      };
+    },
+  },
   {
     key: 'gemini-2.5-flash',
     label: 'Gemini 2.5 Flash',
@@ -168,6 +192,7 @@ WHAT NOT TO EXTRACT:
 - These big tech giants: Google, Apple, Facebook, Meta, Microsoft, Amazon, YouTube, Instagram, WhatsApp, Alphabet
 - Domains/URLs without company context
 - Product categories (e.g., "CRM software" - only extract if it's a company name)
+- Features of companies, for example, Safeguard by SentinelOne (should be just SentinelOne), Adaptive Shield by Crowdstrike (should be just Crowdstrike)
 
 LANGUAGE HANDLING:
 - If company name is in Hebrew, translate to English
@@ -466,7 +491,7 @@ async function findOfficialDomain(
       headers: {
         Accept: 'application/json',
       },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
+      signal: AbortSignal.timeout(20000), // 10 second timeout
     });
 
     if (domainResponse.ok) {

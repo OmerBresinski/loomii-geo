@@ -235,6 +235,7 @@ router.get('/runs/:promptId', async (req, res) => {
           company: true,
         },
       },
+      provider: true,
     },
     orderBy: {
       runAt: 'desc',
@@ -355,6 +356,10 @@ router.get('/runs/:promptId', async (req, res) => {
     return {
       runId: currentRun.id,
       runAt: currentRun.runAt,
+      aiProvider: currentRun.provider ? {
+        id: currentRun.provider.id,
+        name: currentRun.provider.name,
+      } : null,
       totalRuns: totalRunsUpToDate,
       organizationVisibility,
       organizationSentiment,
